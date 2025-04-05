@@ -42,14 +42,14 @@ export default function NotesApp() {
 
   // Audio Recording States
   const [isRecording, setIsRecording] = useState(false)
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const timerRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
+  const [audioChunks, setAudioChunks] = useState<Blob[]>([])
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Add state for recorded file
   const [recordedFile, setRecordedFile] = useState<File | null>(null)
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState("")
 
   // Add state for selected file
@@ -129,54 +129,63 @@ export default function NotesApp() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = mediaRecorder
-      chunksRef.current = []
+      const recorder = new MediaRecorder(stream)
+      setMediaRecorder(recorder)
+      setAudioChunks([])
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data)
+      // Start timer
+      let seconds = 0
+      timerIntervalRef.current = setInterval(() => {
+        seconds++
+        setRecordingTime(seconds)
+      }, 1000)
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          setAudioChunks(chunks => [...chunks, event.data])
         }
       }
 
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' })
         const compressedBlob = await compressAudio(audioBlob)
         const audioFile = new File([compressedBlob], 'recorded-audio.wav', { type: 'audio/wav' })
         setRecordedFile(audioFile)
         setAudioBlob(audioFile)
-        setAudioUrl("")
         stream.getTracks().forEach(track => track.stop())
       }
 
-      mediaRecorder.start()
+      recorder.start()
       setIsRecording(true)
-      
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
-      }, 1000)
-
     } catch (error) {
-      console.error('Error accessing microphone:', error)
+      console.error('Error starting recording:', error)
     }
   }
 
-  // Stop recording function with timer cleanup
+  // Stop recording function
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop()
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop()
       setIsRecording(false)
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-        setRecordingTime(0)
+      
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
       }
     }
   }
 
+  // Clear recording function
   const clearRecording = useCallback(() => {
     setRecordedFile(null)
     setAudioBlob(null)
-    setAudioUrl("")
+    setRecordingTime(0)
+    setAudioChunks([])
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+      timerIntervalRef.current = null
+    }
   }, [])
 
   // Handle file selection
@@ -226,17 +235,17 @@ export default function NotesApp() {
     }
   }
 
-  // Clean up function
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
       }
-      if (mediaRecorderRef.current && isRecording) {
-        mediaRecorderRef.current.stop()
+      if (mediaRecorder && isRecording) {
+        mediaRecorder.stop()
       }
     }
-  }, [isRecording])
+  }, [isRecording, mediaRecorder])
 
   // Fetch notes from Firestore
   useEffect(() => {
@@ -253,20 +262,22 @@ export default function NotesApp() {
         const querySnapshot = await getDocs(q);
         const fetchedNotes = querySnapshot.docs.map(doc => {
           const data = doc.data();
-          // Format the date
-          const date = new Date(data.createdAt);
-          const formattedDate = date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-          });
+          // Handle the timestamp properly
+          const timestamp = data.createdAt?.toDate();
+          const formattedDate = timestamp 
+            ? timestamp.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })
+            : 'No date';
 
           return {
             id: doc.id,
-            meetingName: data.meetingName,
-            shortSummary: data.shortSummary,
+            meetingName: data.fileName || 'Untitled Meeting', // Fallback for meeting name
+            shortSummary: data.summary || 'Processing...', // Fallback for summary
             createdAt: formattedDate,
-            numberOfPeople: data.numberOfPeople
+            numberOfPeople: data.numberOfPeople || 1 // Default to 1 if not specified
           };
         });
 
@@ -280,6 +291,58 @@ export default function NotesApp() {
 
     fetchNotes();
   }, [user]);
+
+  const renderRecordingModal = () => (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+      <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-800">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-white">Record Audio</h2>
+          <button 
+            onClick={() => {
+              stopRecording()
+              setShowRecordingModal(false)
+              clearRecording()
+              setRecordingTime(0)
+            }}
+            className="text-zinc-400 hover:text-white transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center space-y-6">
+          <div className="text-4xl font-mono text-white">
+            {formatTime(recordingTime)}
+          </div>
+
+          {!recordedFile ? (
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              className={`rounded-full p-4 ${
+                isRecording 
+                  ? 'bg-red-600 hover:bg-red-700' 
+                  : 'bg-blue-600 hover:bg-blue-700'
+              } transition-colors`}
+            >
+              {isRecording ? (
+                <StopCircle className="w-8 h-8 text-white" />
+              ) : (
+                <Mic className="w-8 h-8 text-white" />
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={handleUploadFile}
+              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 py-3 transition-colors"
+            >
+              <Upload className="w-5 h-5" />
+              <span>Upload Recording</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 
   const renderInitialModal = () => (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
@@ -351,64 +414,12 @@ export default function NotesApp() {
 
               <button
                 onClick={handleUploadFile}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 px-4 flex items-center justify-center space-x-2"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 px-4 flex items-center justify-center space-x-2 transition-colors"
               >
                 <Upload className="w-5 h-5" />
                 <span>Upload and Transcribe</span>
               </button>
             </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-
-  const renderRecordingModal = () => (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-800">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-white">Record Audio</h2>
-          <button 
-            onClick={() => {
-              stopRecording()
-              setShowRecordingModal(false)
-              clearRecording()
-              setRecordingTime(0)
-            }}
-            className="text-zinc-400 hover:text-white transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="flex flex-col items-center space-y-6">
-          <div className="text-4xl font-mono text-white">
-            {formatTime(recordingTime)}
-          </div>
-
-          {!recordedFile ? (
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`rounded-full p-4 ${
-                isRecording 
-                  ? 'bg-red-600 hover:bg-red-700' 
-                  : 'bg-blue-600 hover:bg-blue-700'
-              } transition-colors`}
-            >
-              {isRecording ? (
-                <StopCircle className="w-8 h-8 text-white" />
-              ) : (
-                <Mic className="w-8 h-8 text-white" />
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={handleUploadFile}
-              className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 rounded-full px-6 py-3 transition-colors text-white"
-            >
-              <Upload className="w-5 h-5" />
-              <span>Upload Recording</span>
-            </button>
           )}
         </div>
       </div>
@@ -445,12 +456,19 @@ export default function NotesApp() {
       {/* Notes List */}
       <div className="flex-1 overflow-auto px-4">
         {loading ? (
-          <div className="flex justify-center items-center h-full">
-            <div className="text-zinc-400">Loading...</div>
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+            <p className="text-zinc-400 mt-4">Loading your notes...</p>
           </div>
         ) : notes.length === 0 ? (
-          <div className="flex justify-center items-center h-full">
-            <div className="text-zinc-400">No notes found</div>
+          <div className="flex flex-col items-center justify-center h-full space-y-4">
+            <div className="bg-zinc-800 rounded-full p-4">
+              <FileText className="w-8 h-8 text-zinc-400" />
+            </div>
+            <p className="text-zinc-400 text-lg">No notes yet</p>
+            <p className="text-zinc-500 text-sm text-center max-w-sm">
+              Click the "New Note" button below to create your first note
+            </p>
           </div>
         ) : (
           notes.map((note, index) => (
@@ -489,7 +507,7 @@ export default function NotesApp() {
       {/* New Note Button */}
       <div className="flex justify-center py-6">
         <button
-          className="bg-blue-500 text-white rounded-full px-8 py-3 flex items-center justify-center"
+          className="bg-blue-500 text-white rounded-full px-8 py-3 flex items-center justify-center hover:bg-blue-600 transition-colors"
           onClick={() => setShowModal(true)}
         >
           <Plus className="w-5 h-5 mr-2" />
