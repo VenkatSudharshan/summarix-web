@@ -4,11 +4,16 @@ import NotesList from "@/components/NotesList";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { Search, Plus, X, Mic, Upload, FileText, StopCircle } from "lucide-react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { Search, Plus, X, Mic, Upload, FileText, StopCircle, MessageSquare } from "lucide-react";
+import { addDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Toast from "@/components/Toast";
+import { Button } from "@/components/ui/button";
+import { NoteSelector } from "@/components/note-selector";
+import { Chatbot, ChatbotRef } from "@/components/chatbot";
+import { TemplateConverter, TemplateConverterRef } from "@/components/template-converter";
+
 
 // Define Note interface
 interface Note {
@@ -17,8 +22,12 @@ interface Note {
   shortSummary: string;
   createdAt: string;
   numberOfPeople: number;
+  formattedTranscript?: string;
   uid: string;
 }
+
+// Define NoteWithoutUid type for note selector
+type NoteWithoutUid = Omit<Note, 'uid'>
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
@@ -29,14 +38,19 @@ export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [context, setContext] = useState<string>('');
+  const [selectedNoteForChat, setSelectedNoteForChat] = useState<Note | null>(null);
+  const [selectedNoteForTemplate, setSelectedNoteForTemplate] = useState<Note | null>(null);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const chatbotRef = useRef<ChatbotRef>(null)
+  const templateConverterRef = useRef<TemplateConverterRef>(null)
 
   // Authentication redirect effect
   useEffect(() => {
@@ -51,11 +65,70 @@ export default function Home() {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
-      if (mediaRecorder && isRecording) {
-        mediaRecorder.stop();
+      if (mediaRecorderRef.current && isRecording) {
+        mediaRecorderRef.current.stop();
       }
     };
-  }, [isRecording, mediaRecorder]);
+  }, [isRecording]);
+
+  // Add this useEffect for timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isRecording]);
+
+  // Add this useEffect to fetch notes
+  useEffect(() => {
+    if (user) {
+      const notesRef = collection(db, "audioProcessing");
+      const q = query(
+        notesRef, 
+        where("userId", "==", user.uid),
+        orderBy("createdAt", "desc")
+      );
+      
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const notesData = snapshot.docs.map(doc => {
+          const data = doc.data();
+          console.log('Raw document data:', data); // Log the raw document data
+          
+          const timestamp = data.createdAt?.toDate();
+          const formattedDate = timestamp 
+            ? timestamp.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })
+            : 'No date';
+
+          return {
+            id: doc.id,
+            meetingName: data.meetingName || data.fileName || 'Untitled Meeting',
+            shortSummary: data.shortSummary?.replace(/###.*?:/g, '').trim() || 'Processing...',
+            createdAt: formattedDate,
+            numberOfPeople: data.numberOfPeople || 1,
+            formattedTranscript: data.formattedTranscript || data.transcript || '',
+            uid: data.userId || user.uid
+          };
+        });
+        console.log('Processed notes:', notesData); // Log the processed notes
+        setNotes(notesData);
+      });
+
+      return () => unsubscribe();
+    }
+  }, [user]);
 
   const handleNoteSelect = (note: Note) => {
     setSelectedNote(note);
@@ -63,51 +136,44 @@ export default function Home() {
     // You can expand this to navigate to a note detail page
   };
 
-  // Start recording function
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      setMediaRecorder(recorder);
-      setAudioChunks([]);
-
-      // Start timer
-      let seconds = 0;
-      timerIntervalRef.current = setInterval(() => {
-        seconds++;
-        setRecordingTime(seconds);
-      }, 1000);
-
-      recorder.ondataavailable = (event) => {
+      const mediaRecorder = new MediaRecorder(stream);
+      
+      // Reset everything
+      setRecordingTime(0);
+      chunksRef.current = [];
+      setAudioBlob(null);
+      
+      // Set up recorder
+      mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          setAudioChunks(chunks => [...chunks, event.data]);
+          chunksRef.current.push(event.data);
         }
       };
 
-      recorder.onstop = () => {
-        const blob = new Blob(audioChunks, { type: 'audio/wav' });
+      mediaRecorder.onstop = () => {
+        // Create blob from all chunks
+        const blob = new Blob(chunksRef.current, { type: 'audio/wav' });
         setAudioBlob(blob);
         stream.getTracks().forEach(track => track.stop());
       };
 
-      recorder.start();
+      // Start recording
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
     } catch (error) {
       console.error('Error starting recording:', error);
+      setToast({ message: 'Error starting recording', type: 'error' });
     }
   };
 
-  // Stop recording function
   const stopRecording = () => {
-    if (mediaRecorder && isRecording) {
-      mediaRecorder.stop();
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
-      
-      // Stop timer
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
     }
   };
 
@@ -143,6 +209,12 @@ export default function Home() {
         fileName = selectedFile.name;
         fileToUpload = selectedFile;
       } else if (audioBlob) {
+        // Ensure we have a valid audio blob
+        if (!audioBlob || audioBlob.size === 0) {
+          setToast({ message: 'No audio recorded', type: 'error' });
+          setIsUploading(false);
+          return;
+        }
         fileName = `recording-${new Date().toISOString()}.wav`;
         fileToUpload = audioBlob;
       }
@@ -169,8 +241,6 @@ export default function Home() {
         downloadableUrl: fileUrl,
         filePath: filePath,
         context: context,
-        //summary: 'Processing...',
-        //numberOfPeople: 1,
         status: "pending",
         createdAt: serverTimestamp(),
       });
@@ -318,8 +388,10 @@ export default function Home() {
               setShowRecordingModal(false);
               setAudioBlob(null);
               setRecordingTime(0);
+              setContext('');
             }}
             className="text-zinc-400 hover:text-white transition-colors"
+            disabled={isUploading}
           >
             <X className="w-6 h-6" />
           </button>
@@ -338,6 +410,7 @@ export default function Home() {
                   ? 'bg-red-600 hover:bg-red-700' 
                   : 'bg-blue-600 hover:bg-blue-700'
               } transition-colors`}
+              disabled={isUploading}
             >
               {isRecording ? (
                 <StopCircle className="w-8 h-8 text-white" />
@@ -346,13 +419,40 @@ export default function Home() {
               )}
             </button>
           ) : (
-            <button
-              onClick={handleUploadFile}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 py-3 transition-colors"
-            >
-              <Upload className="w-5 h-5" />
-              <span>Upload Recording</span>
-            </button>
+            <div className="w-full space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="context" className="block text-sm font-medium text-zinc-300">
+                  Keywords/Context (optional)
+                </label>
+                <input
+                  id="context"
+                  type="text"
+                  value={context}
+                  onChange={(e) => setContext(e.target.value)}
+                  placeholder="Enter keywords or context for better transcription"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isUploading}
+                />
+              </div>
+
+              <button
+                onClick={handleUploadFile}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 px-4 flex items-center justify-center space-x-2 transition-colors"
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-5 h-5" />
+                    <span>Upload and Transcribe</span>
+                  </>
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -391,7 +491,7 @@ export default function Home() {
       </div>
 
       {/* Notes List Component */}
-      <NotesList userId={user.uid} onNoteSelect={handleNoteSelect} />
+      <NotesList userId={user.uid} />
 
       {/* New Note Button */}
       <div className="flex justify-center py-6">
@@ -408,6 +508,71 @@ export default function Home() {
       <div className="flex justify-center py-2">
         <div className="w-32 h-1 bg-zinc-600 rounded-full"></div>
       </div>
+
+      {/* Chat and Template Buttons */}
+      <div className="fixed bottom-4 right-4">
+        <NoteSelector
+          trigger={
+            <Button
+              variant="default"
+              size="icon"
+              className="h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
+            >
+              <MessageSquare className="h-7 w-7 text-white" />
+              <span className="sr-only">Chat with note</span>
+            </Button>
+          }
+          notes={notes as NoteWithoutUid[]}
+          onNoteSelect={(note) => {
+            setSelectedNoteForChat({ ...note, uid: user!.uid });
+            setTimeout(() => {
+              chatbotRef.current?.open();
+            }, 100);
+          }}
+          title="Select note to chat with"
+        />
+      </div>
+
+      <div className="fixed bottom-4 left-4">
+        <NoteSelector
+          trigger={
+            <Button
+              variant="default"
+              size="icon"
+              className="h-14 w-14 rounded-full shadow-lg bg-green-600 hover:bg-green-700"
+            >
+              <FileText className="h-7 w-7 text-white" />
+              <span className="sr-only">Convert note to template</span>
+            </Button>
+          }
+          notes={notes as NoteWithoutUid[]}
+          onNoteSelect={(note) => {
+            setSelectedNoteForTemplate({ ...note, uid: user!.uid });
+            setTimeout(() => {
+              templateConverterRef.current?.open();
+            }, 100);
+          }}
+          title="Select note to convert"
+        />
+      </div>
+
+      {/* Chatbot */}
+      {selectedNoteForChat && (
+        <Chatbot
+          ref={chatbotRef}
+          transcript={selectedNoteForChat.formattedTranscript || ""}
+          onClose={() => setSelectedNoteForChat(null)}
+        />
+      )}
+
+      {/* Template Converter */}
+      {selectedNoteForTemplate && (
+        <TemplateConverter
+          ref={templateConverterRef}
+          transcript={selectedNoteForTemplate.formattedTranscript || ""}
+          onClose={() => setSelectedNoteForTemplate(null)}
+        />
+      )}
 
       {/* Modals */}
       {showModal && renderInitialModal()}
