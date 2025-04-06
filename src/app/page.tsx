@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { Search, Plus, X, Mic, Upload, FileText, StopCircle, MessageSquare } from "lucide-react";
-import { addDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Toast from "@/components/Toast";
@@ -49,8 +49,62 @@ export default function Home() {
   const [selectedNoteForChat, setSelectedNoteForChat] = useState<Note | null>(null);
   const [selectedNoteForTemplate, setSelectedNoteForTemplate] = useState<Note | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
   const chatbotRef = useRef<ChatbotRef>(null)
   const templateConverterRef = useRef<TemplateConverterRef>(null)
+
+  // Fetch notes from Firestore
+  useEffect(() => {
+    const fetchNotes = async () => {
+      try {
+        const q = query(
+          collection(db, "audioProcessing"),
+          where("userId", "==", user?.uid),
+          orderBy("createdAt", "desc")
+        )
+
+        const querySnapshot = await getDocs(q)
+        const fetchedNotes = querySnapshot.docs.map(doc => {
+          const data = doc.data()
+          const timestamp = data.createdAt?.toDate()
+          const formattedDate = timestamp 
+            ? timestamp.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })
+            : 'No date'
+
+          return {
+            id: doc.id,
+            meetingName: data.meetingName || data.fileName || 'Untitled Meeting',
+            shortSummary: data.shortSummary?.replace(/###.*?:/g, '').trim() || 'Processing...',
+            createdAt: formattedDate,
+            numberOfPeople: data.numberOfPeople || 1,
+            uid: data.userId || user?.uid || '',
+            formattedTranscript: data.formattedTranscript || ''
+          }
+        })
+
+        setNotes(fetchedNotes)
+      } catch (error) {
+        console.error("Error fetching notes:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (user) {
+      fetchNotes()
+    }
+  }, [user])
+
+  // Filter notes based on search query
+  const filteredNotes = notes.filter(note => 
+    note.meetingName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    note.shortSummary.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // Authentication redirect effect
   useEffect(() => {
@@ -87,48 +141,6 @@ export default function Home() {
       }
     };
   }, [isRecording]);
-
-  // Add this useEffect to fetch notes
-  useEffect(() => {
-    if (user) {
-      const notesRef = collection(db, "audioProcessing");
-      const q = query(
-        notesRef, 
-        where("userId", "==", user.uid),
-        orderBy("createdAt", "desc")
-      );
-      
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const notesData = snapshot.docs.map(doc => {
-          const data = doc.data();
-          console.log('Raw document data:', data); // Log the raw document data
-          
-          const timestamp = data.createdAt?.toDate();
-          const formattedDate = timestamp 
-            ? timestamp.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-              })
-            : 'No date';
-
-          return {
-            id: doc.id,
-            meetingName: data.meetingName || data.fileName || 'Untitled Meeting',
-            shortSummary: data.shortSummary?.replace(/###.*?:/g, '').trim() || 'Processing...',
-            createdAt: formattedDate,
-            numberOfPeople: data.numberOfPeople || 1,
-            formattedTranscript: data.formattedTranscript || data.transcript || '',
-            uid: data.userId || user.uid
-          };
-        });
-        console.log('Processed notes:', notesData); // Log the processed notes
-        setNotes(notesData);
-      });
-
-      return () => unsubscribe();
-    }
-  }, [user]);
 
   const handleNoteSelect = (note: Note) => {
     setSelectedNote(note);
@@ -459,7 +471,7 @@ export default function Home() {
     </div>
   );
 
-  if (loading || !user) {
+  if (isLoading || !user) {
     return null;
   }
 
@@ -485,13 +497,21 @@ export default function Home() {
           <input
             type="text"
             placeholder="Search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="bg-transparent border-none outline-none pl-2 text-zinc-400 w-full"
           />
         </div>
       </div>
 
       {/* Notes List Component */}
-      <NotesList userId={user.uid} />
+      {isLoading ? (
+        <div className="flex justify-center items-center h-full">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+        </div>
+      ) : (
+        <NotesList userId={user.uid} notes={filteredNotes} />
+      )}
 
       {/* New Note Button */}
       <div className="flex justify-center py-6">
