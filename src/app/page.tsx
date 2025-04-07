@@ -4,7 +4,7 @@ import NotesList from "@/components/NotesList";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { Search, Plus, X, Mic, Upload, FileText, StopCircle, MessageSquare, Youtube } from "lucide-react";
+import { Search, Plus, X, Mic, Upload, FileText, StopCircle, MessageSquare } from "lucide-react";
 import { addDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -37,7 +37,6 @@ export default function Home() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showRecordingModal, setShowRecordingModal] = useState(false);
-  const [showYoutubeModal, setShowYoutubeModal] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -56,7 +55,6 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const chatbotRef = useRef<ChatbotRef>(null)
   const templateConverterRef = useRef<TemplateConverterRef>(null)
-  const [youtubeUrl, setYoutubeUrl] = useState('');
 
   // Fetch notes from Firestore
   useEffect(() => {
@@ -338,72 +336,6 @@ export default function Home() {
     }
   };
 
-  const handleYoutubeProcess = async () => {
-    if (!user || !youtubeUrl.trim()) return;
-
-    try {
-      setIsUploading(true);
-
-      // Validate YouTube URL
-      if (!youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be')) {
-        setToast({ message: "Please enter a valid YouTube URL", type: "error" });
-        setIsUploading(false);
-        return;
-      }
-
-      // Create a document in the youtubeTranscriptions collection
-      const docRef = await addDoc(collection(db, "youtubeTranscriptions"), {
-        userId: user.uid,
-        url: youtubeUrl,
-        context: context,
-        status: "pending",
-        createdAt: serverTimestamp(),
-      });
-
-      // Call your API to process the YouTube URL
-      const response = await fetch("/api/process-youtube", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: youtubeUrl,
-          docId: docRef.id,
-          context: context,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to process YouTube URL");
-      }
-
-      // Reset states
-      setYoutubeUrl("");
-      setContext("");
-      setShowYoutubeModal(false);
-
-      // Show success toast
-      setToast({ message: "YouTube podcast processing started!", type: "success" });
-    } catch (error) {
-      console.error("Error processing YouTube URL:", error);
-      
-      // Display detailed error message if available
-      let errorMessage = "Error processing YouTube URL. Please try again.";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
-      setToast({ 
-        message: errorMessage, 
-        type: "error" 
-      });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const renderInitialModal = () => (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
       <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-800">
@@ -453,18 +385,6 @@ export default function Home() {
               >
                 <Mic className="w-6 h-6" />
                 <span className="font-medium">Start Recording Audio</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  setShowYoutubeModal(true);
-                }}
-                className="flex items-center space-x-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl p-4 transition-colors text-white"
-                disabled={isUploading}
-              >
-                <Youtube className="w-6 h-6" />
-                <span className="font-medium">Add YouTube Podcast</span>
               </button>
             </>
           ) : (
@@ -611,83 +531,6 @@ export default function Home() {
     </div>
   );
 
-  const renderYoutubeModal = () => (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-800">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-white">Add YouTube Podcast</h2>
-          <button
-            onClick={() => {
-              setShowYoutubeModal(false);
-              setYoutubeUrl("");
-              setContext("");
-            }}
-            className="text-zinc-400 hover:text-white transition-colors"
-            disabled={isUploading}
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="youtube-url" className="block text-sm font-medium text-zinc-300">
-              YouTube URL
-            </label>
-            <input
-              id="youtube-url"
-              type="url"
-              value={youtubeUrl}
-              onChange={(e) => setYoutubeUrl(e.target.value)}
-              placeholder="https://youtube.com/watch?v=..."
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isUploading}
-            />
-            <p className="text-xs text-zinc-500">
-              Enter a valid YouTube URL (e.g., https://youtube.com/watch?v=...)
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="context" className="block text-sm font-medium text-zinc-300">
-              Keywords/Context (optional)
-            </label>
-            <input
-              id="context"
-              type="text"
-              value={context}
-              onChange={(e) => setContext(e.target.value)}
-              placeholder="Enter keywords or context for better transcription"
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isUploading}
-            />
-            <p className="text-xs text-zinc-500">
-              Add keywords or context to help with better transcription and summary
-            </p>
-          </div>
-
-          <button
-            onClick={handleYoutubeProcess}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 px-4 flex items-center justify-center space-x-2 transition-colors"
-            disabled={isUploading || !youtubeUrl.trim()}
-          >
-            {isUploading ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                <span>Processing...</span>
-              </>
-            ) : (
-              <>
-                <Upload className="w-5 h-5" />
-                <span>Process Podcast</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   if (isLoading || !user) {
     return null;
   }
@@ -813,7 +656,6 @@ export default function Home() {
       {/* Modals */}
       {showModal && renderInitialModal()}
       {showRecordingModal && renderRecordingModal()}
-      {showYoutubeModal && renderYoutubeModal()}
 
       {/* Toast Notification */}
       {toast && (
