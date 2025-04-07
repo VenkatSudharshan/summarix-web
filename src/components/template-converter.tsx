@@ -8,13 +8,14 @@ import { FileText, ArrowLeft, Loader2, Copy, Download } from "lucide-react"
 interface TemplateConverterProps {
   transcript: string
   onClose?: () => void
+  hideTrigger?: boolean
 }
 
 export interface TemplateConverterRef {
   open: () => void
 }
 
-export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConverterProps>(({ transcript, onClose }, ref) => {
+export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConverterProps>(({ transcript, onClose, hideTrigger = false }, ref) => {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [convertedContent, setConvertedContent] = useState<string | null>(null)
   const [editedContent, setEditedContent] = useState<string>("")
@@ -143,16 +144,18 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
-      <SheetTrigger asChild>
-        <Button
-          variant="default"
-          size="icon"
-          className="fixed bottom-4 left-4 h-14 w-14 rounded-full shadow-lg bg-green-600 hover:bg-green-700"
-        >
-          <FileText className="h-7 w-7 text-white" />
-          <span className="sr-only">Convert to template</span>
-        </Button>
-      </SheetTrigger>
+      {!hideTrigger && (
+        <SheetTrigger asChild>
+          <Button
+            variant="default"
+            size="icon"
+            className="fixed bottom-4 left-4 h-14 w-14 rounded-full shadow-lg bg-green-600 hover:bg-green-700"
+          >
+            <FileText className="h-7 w-7 text-white" />
+            <span className="sr-only">Convert to template</span>
+          </Button>
+        </SheetTrigger>
+      )}
       <SheetContent side="right" className="w-full sm:w-[800px] p-0">
         <SheetHeader className="p-6 border-b border-zinc-800">
           <div className="flex items-center gap-2">

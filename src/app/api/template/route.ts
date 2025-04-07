@@ -26,7 +26,14 @@ export async function POST(req: Request) {
     const templatePrompts: Record<string, string> = {
       "meeting-minutes": `Convert the following transcript into a structured meeting minutes document using this exact format:
 
+⚠️ **Instructions for AI Generator:**
+- Use only the provided transcript and context.
+- Strictly do NOT hallucinate, assume, or make up names, dates, or events.
+- If data is not available in the transcript, leave the field blank or label as [Not Mentioned].
+
 # 📝 Meeting Minutes: [Project/Topic Name]
+
+
 
 ## 📅 Date: [Date]
 ## ⏰ Time: [Start Time] - [End Time]
@@ -34,42 +41,41 @@ export async function POST(req: Request) {
 ## 📋 Facilitator: [Name]
 
 ## 👥 Attendees
-- [Name] – [Role]
-- [Name] – [Role]
+- [Name], [Role]
+- [Name], [Role]
 
 ## 📌 Agenda
-1. [Item 1]
-2. [Item 2]
-3. [Item 3]
+1. [Agenda Item 1]
+2. [Agenda Item 2]
 
 ## 💬 Key Discussion Points
-### [Item 1]
-- [Point A]
-- [Point B]
-
-### [Item 2]
-- [Point A]
-- [Point B]
+### [Agenda Item 1]
+- [Key point 1]
+- [Key point 2]
 
 ## ✅ Decisions Made
 - [Decision 1]
 - [Decision 2]
 
 ## 🛠️ Action Items
-- [ ] [Action Item 1] – Assigned to: [Name], Due: [Date]
-- [ ] [Action Item 2] – Assigned to: [Name], Due: [Date]
+- [ ] [Action Item] – Assigned to: [Name], Due: [Date]
 
 ## 📅 Next Meeting
 - Date: [Date]
 - Time: [Time]
-- Preliminary Agenda: [Items]
+- Agenda Items: [Items]
 
-Extract all relevant information from the transcript and fill in the template. If certain information is not available in the transcript, make reasonable inferences or leave those sections blank.
+Extract all relevant information from the transcript and fill in the template. 
 
 Transcript:
 ${transcript}`,
       
       "business-requirements": `Extract business and functional requirements from the following transcript and format them according to this template:
+
+⚠️ **Instructions for AI Generator:**
+- Use only the provided transcript and context.
+- Strictly do NOT hallucinate, assume, or make up names, dates, or events.
+- If data is not available in the transcript, leave the field blank or label as [Not Mentioned].
 
 # 📄 Requirements Document
 
@@ -103,12 +109,16 @@ ${transcript}`,
 - Security: [e.g., Role-based access]
 - Availability: [e.g., 99.9% uptime]
 
-Extract all relevant information from the transcript and fill in the template. If certain information is not available in the transcript, make reasonable inferences or leave those sections blank.
-
+Extract all relevant information from the transcript and fill in the template. 
 Transcript:
 ${transcript}`,
       
       "user-stories": `Create tasks and user stories based on the action items mentioned in the following transcript using this exact format:
+
+⚠️ **Instructions for AI Generator:**
+- Use only the provided transcript and context.
+- Strictly do NOT hallucinate, assume, or make up names, dates, or events.
+- If data is not available in the transcript, leave the field blank or label as [Not Mentioned].
 
 # 🧩 User Stories and Tasks
 
@@ -136,12 +146,16 @@ ${transcript}`,
 **Due Date**: [Date]  
 **Priority**: [High/Medium/Low]
 
-Extract all relevant information from the transcript and fill in the template. If certain information is not available in the transcript, make reasonable inferences or leave those sections blank.
-
+Extract all relevant information from the transcript and fill in the template. 
 Transcript:
 ${transcript}`,
       
       "project-timelines": `Create a project timeline based on the following transcript using this exact format:
+
+⚠️ **Instructions for AI Generator:**
+- Use only the provided transcript and context.
+- Strictly do NOT hallucinate, assume, or make up names, dates, or events.
+- If data is not available in the transcript, leave the field blank or label as [Not Mentioned].
 
 # 🗓️ Project Timeline & Milestones
 
@@ -170,8 +184,7 @@ ${transcript}`,
 ## 📝 Notes
 [Add any assumptions, risks, or dependencies here.]
 
-Extract all relevant information from the transcript and fill in the template. If certain information is not available in the transcript, make reasonable inferences or leave those sections blank.
-
+Extract all relevant information from the transcript and fill in the template.  
 Transcript:
 ${transcript}`
     }

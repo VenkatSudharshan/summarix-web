@@ -8,13 +8,14 @@ import { MessageSquare, ArrowLeft, Send } from "lucide-react"
 interface ChatbotProps {
   transcript: string
   onClose?: () => void
+  hideTrigger?: boolean
 }
 
 export interface ChatbotRef {
   open: () => void
 }
 
-export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClose }, ref) => {
+export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClose, hideTrigger = false }, ref) => {
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([
     { role: 'assistant', content: 'Hi! I\'m here to help you understand your transcript. What would you like to know?' }
   ])
@@ -87,16 +88,18 @@ export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClo
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
-      <SheetTrigger asChild>
-        <Button
-          variant="default"
-          size="icon"
-          className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
-        >
-          <MessageSquare className="h-7 w-7 text-white" />
-          <span className="sr-only">Chat with transcript</span>
-        </Button>
-      </SheetTrigger>
+      {!hideTrigger && (
+        <SheetTrigger asChild>
+          <Button
+            variant="default"
+            size="icon"
+            className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700"
+          >
+            <MessageSquare className="h-7 w-7 text-white" />
+            <span className="sr-only">Chat with transcript</span>
+          </Button>
+        </SheetTrigger>
+      )}
       <SheetContent side="right" className="w-full sm:w-[800px] p-0">
         <SheetHeader className="p-6 border-b border-zinc-800">
           <div className="flex items-center gap-2">
