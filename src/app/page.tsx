@@ -28,6 +28,8 @@ interface Note {
   formattedTranscript?: string;
   uid: string;
   type?: 'audio' | 'youtube' | 'lecture';
+  flashCards?: string;
+  mcq?: string;
 }
 
 // Define NoteWithoutUid type for note selector
@@ -795,6 +797,7 @@ export default function Home() {
           ref={chatbotRef}
           transcript={selectedNoteForChat.formattedTranscript || ""}
           onClose={() => setSelectedNoteForChat(null)}
+          hideTrigger={true}
         />
       )}
 
@@ -804,6 +807,7 @@ export default function Home() {
           ref={templateConverterRef}
           transcript={selectedNoteForTemplate.formattedTranscript || ""}
           onClose={() => setSelectedNoteForTemplate(null)}
+          hideTrigger={true}
         />
       )}
 
