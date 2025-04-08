@@ -17,28 +17,32 @@ import { FeedbackButton } from "@/components/feedback-button";
 import { FlashCards, FlashCardsRef } from "@/components/flash-cards";
 import Quiz, { QuizRef } from "@/components/quiz";
 
-
-// Define Note interface
+// Reinstated local Note interface definition
 interface Note {
   id: string;
   meetingName: string;
   shortSummary: string;
-  createdAt: string;
+  createdAt: string; // Keep as string for display consistency here
   numberOfPeople: number;
   formattedTranscript?: string;
   uid: string;
   type?: 'audio' | 'youtube' | 'lecture';
-  flashCards?: string;
+  flashCards?: string; // Keep optional fields needed
   mcq?: string;
+  // Add other fields if used locally, e.g., from Firestore mapping
+  transcript?: string;
+  summary?: string;
+  url?: string; // For youtube title
+  lectureTitle?: string; // For lecture title
+  fileName?: string; // For fallback title
 }
 
-// Define NoteWithoutUid type for note selector
-type NoteWithoutUid = Omit<Note, 'uid'>
+// Define NoteWithoutUid type based on local Note
+type NoteWithoutUid = Omit<Note, 'uid'>;
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
-  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showRecordingModal, setShowRecordingModal] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -68,24 +72,19 @@ export default function Home() {
   // Fetch notes from Firestore
   useEffect(() => {
     if (!user) return;
+    setIsLoading(true);
 
-    setIsLoading(true); // Set loading to true when starting to fetch
-
-    // Fetch audio notes
+    // Firebase query definitions (audioQuery, youtubeQuery, lectureQuery)
     const audioQuery = query(
       collection(db, "audioProcessing"),
       where("userId", "==", user.uid),
       orderBy("createdAt", "desc")
     );
-
-    // Fetch YouTube notes
     const youtubeQuery = query(
       collection(db, "youtubeTranscriptions"),
       where("userId", "==", user.uid),
       orderBy("createdAt", "desc")
     );
-
-    // Fetch lecture notes
     const lectureQuery = query(
       collection(db, "lectureTranscripts"),
       where("userId", "==", user.uid),
@@ -95,119 +94,82 @@ export default function Home() {
     let audioNotes: Note[] = [];
     let youtubeNotes: Note[] = [];
     let lectureNotes: Note[] = [];
-    let hasError = false;
 
-    // Set up listeners for all collections
-    const unsubscribeAudio = onSnapshot(audioQuery, 
-      (audioSnapshot) => {
-        audioNotes = audioSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          const timestamp = data.createdAt?.toDate();
-          const formattedDate = timestamp
-            ? timestamp.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })
-            : "No date";
+    // Listener for Audio Notes
+    const unsubscribeAudio = onSnapshot(audioQuery, (snapshot) => {
+      audioNotes = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        const timestamp = data.createdAt?.toDate();
+        const formattedDate = timestamp ? timestamp.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No date";
+        return {
+          id: doc.id,
+          meetingName: data.meetingName || data.fileName || "Untitled Meeting",
+          shortSummary: data.shortSummary?.replace(/###.*?:/g, "").trim() || "Processing...",
+          createdAt: formattedDate,
+          numberOfPeople: data.numberOfPeople || 1,
+          uid: data.userId || user.uid || "",
+          formattedTranscript: data.formattedTranscript || "",
+          transcript: data.transcript || undefined,
+          type: 'audio' as const,
+          fileName: data.fileName || undefined, // Capture fileName
+        };
+      });
+      setNotes(prev => [...prev.filter(n => n.type !== 'audio'), ...audioNotes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      setIsLoading(false);
+    }, (error) => { console.error("Error fetching audio notes:", error); setIsLoading(false); });
 
-          return {
-            id: doc.id,
-            meetingName: data.meetingName || data.fileName || "Untitled Meeting",
-            shortSummary: data.shortSummary?.replace(/###.*?:/g, "").trim() || "Processing...",
-            createdAt: formattedDate,
-            numberOfPeople: data.numberOfPeople || 1,
-            uid: data.userId || user.uid || "",
-            formattedTranscript: data.formattedTranscript || "",
-            type: 'audio' as const,
-          };
-        });
+    // Listener for YouTube Notes
+    const unsubscribeYoutube = onSnapshot(youtubeQuery, (snapshot) => {
+      youtubeNotes = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        const timestamp = data.createdAt?.toDate();
+        const formattedDate = timestamp ? timestamp.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No date";
+        return {
+          id: doc.id,
+          meetingName: data.url || "YouTube Video", // Use URL as meetingName here
+          shortSummary: data.summary?.substring(0, 100) || "Processing...",
+          createdAt: formattedDate,
+          numberOfPeople: 1,
+          uid: data.userId || user.uid || "",
+          formattedTranscript: data.transcript || "", // Youtube uses raw transcript
+          transcript: data.transcript || undefined,
+          type: 'youtube' as const,
+          url: data.url || undefined,
+        };
+      });
+      setNotes(prev => [...prev.filter(n => n.type !== 'youtube'), ...youtubeNotes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      setIsLoading(false);
+    }, (error) => { console.error("Error fetching YouTube notes:", error); setIsLoading(false); });
 
-        // Update notes state with combined notes
-        setNotes([...youtubeNotes, ...lectureNotes, ...audioNotes]);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching audio notes:", error);
-        hasError = true;
-        setIsLoading(false);
-      }
-    );
+    // Listener for Lecture Notes
+    const unsubscribeLecture = onSnapshot(lectureQuery, (snapshot) => {
+      lectureNotes = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        const timestamp = data.createdAt?.toDate();
+        const formattedDate = timestamp ? timestamp.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No date";
+        return {
+          id: doc.id,
+          meetingName: data.lectureTitle || data.meetingName || data.fileName || "Untitled Lecture", // Use lectureTitle or fallback
+          shortSummary: data.shortSummary?.replace(/###.*?:/g, "").trim() || "Processing...",
+          createdAt: formattedDate,
+          numberOfPeople: 1,
+          uid: data.userId || user.uid || "",
+          formattedTranscript: data.formattedTranscript || "",
+          transcript: data.transcript || undefined,
+          type: 'lecture' as const,
+          flashCards: data.flashCards || undefined,
+          mcq: data.mcq || undefined,
+          lectureTitle: data.lectureTitle || undefined,
+          fileName: data.fileName || undefined,
+        };
+      });
+      setNotes(prev => [...prev.filter(n => n.type !== 'lecture'), ...lectureNotes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      setIsLoading(false);
+    }, (error) => { console.error("Error fetching lecture notes:", error); setIsLoading(false); });
 
-    const unsubscribeYoutube = onSnapshot(youtubeQuery, 
-      (youtubeSnapshot) => {
-        youtubeNotes = youtubeSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          const timestamp = data.createdAt?.toDate();
-          const formattedDate = timestamp
-            ? timestamp.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })
-            : "No date";
+    setNotes([]); // Initialize notes state
 
-          return {
-            id: doc.id,
-            meetingName: data.url || "YouTube Video",
-            shortSummary: data.summary?.substring(0, 100) || "Processing...",
-            createdAt: formattedDate,
-            numberOfPeople: 1,
-            uid: data.userId || user.uid || "",
-            formattedTranscript: data.transcript || "",
-            type: 'youtube' as const,
-          };
-        });
-
-        // Update notes state with combined notes
-        setNotes([...youtubeNotes, ...lectureNotes, ...audioNotes]);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching YouTube notes:", error);
-        hasError = true;
-        setIsLoading(false);
-      }
-    );
-
-    const unsubscribeLecture = onSnapshot(lectureQuery, 
-      (lectureSnapshot) => {
-        lectureNotes = lectureSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          const timestamp = data.createdAt?.toDate();
-          const formattedDate = timestamp
-            ? timestamp.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })
-            : "No date";
-
-          return {
-            id: doc.id,
-            meetingName: data.lectureTitle || data.meetingName || data.fileName || "Untitled Lecture",
-            shortSummary: data.shortSummary?.replace(/###.*?:/g, "").trim() || "Processing...",
-            //shortSummary: data.shortSummary?.substring(0, 100) + "..." || "Processing...",
-            createdAt: formattedDate,
-            numberOfPeople: 1,
-            uid: data.userId || user.uid || "",
-            formattedTranscript: data.formattedTranscript || "",
-            type: 'lecture' as const,
-          };
-        });
-
-        // Update notes state with combined notes
-        setNotes([...youtubeNotes, ...lectureNotes, ...audioNotes]);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching lecture notes:", error);
-        hasError = true;
-        setIsLoading(false);
-      }
-    );
-
-    // Clean up listeners on unmount
+    // Cleanup listeners
     return () => {
       unsubscribeAudio();
       unsubscribeYoutube();
@@ -215,7 +177,7 @@ export default function Home() {
     };
   }, [user]);
 
-  // Filter notes based on search query
+  // Filter notes based on search query (uses meetingName now)
   const filteredNotes = notes.filter(note => 
     note.meetingName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     note.shortSummary.toLowerCase().includes(searchQuery.toLowerCase())
@@ -228,7 +190,7 @@ export default function Home() {
     }
   }, [user, loading, router]);
 
-  // Cleanup on unmount
+  // Cleanup recording timer/media recorder on unmount
   useEffect(() => {
     return () => {
       if (timerIntervalRef.current) {
@@ -240,29 +202,16 @@ export default function Home() {
     };
   }, [isRecording]);
 
-  // Add this useEffect for timer
+  // Recording timer effect
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
-    
     if (isRecording) {
-      interval = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
+      interval = setInterval(() => { setRecordingTime(prev => prev + 1); }, 1000);
     }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
+    return () => { if (interval) clearInterval(interval); };
   }, [isRecording]);
 
-  const handleNoteSelect = (note: Note) => {
-    setSelectedNote(note);
-    console.log("Selected note:", note);
-    // You can expand this to navigate to a note detail page
-  };
-
+  // Recording functions (startRecording, stopRecording, formatTime)
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -311,7 +260,7 @@ export default function Home() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Handle file selection
+  // File handling functions (handleFileSelect, handleUploadFile)
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('audio/')) {
@@ -321,7 +270,6 @@ export default function Home() {
     }
   };
 
-  // Handle upload to Firebase
   const handleUploadFile = async () => {
     if (!user) return;
 
@@ -411,6 +359,7 @@ export default function Home() {
     }
   };
 
+  // Modal rendering functions (renderInitialModal, renderRecordingModal)
   const renderInitialModal = () => (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
       <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-800">
@@ -646,7 +595,7 @@ export default function Home() {
   );
 
   if (isLoading || !user) {
-    return null;
+    return <div className="flex items-center justify-center h-screen bg-black"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white"></div></div>;
   }
 
   return (
@@ -679,100 +628,87 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Action Buttons - Added under search bar */}
+      {/* Action Buttons */}
       <div className="px-8 mb-6 flex gap-4">
         <NoteSelector
           trigger={
-            <Button
-              variant="default"
-              size="default"
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
+            <Button variant="default" size="default" className="bg-blue-600 hover:bg-blue-700 text-white">
               <MessageSquare className="h-5 w-5 mr-2" />
               <span>Chat with Note</span>
             </Button>
           }
-          notes={notes as NoteWithoutUid[]}
+          notes={notes.map(({ uid, ...rest }) => rest)}
           onNoteSelect={(note) => {
-            setSelectedNoteForChat({ ...note, uid: user!.uid });
-            setTimeout(() => {
-              chatbotRef.current?.open();
-            }, 100);
+            const fullNote = notes.find(n => n.id === note.id);
+            if (fullNote) {
+              setSelectedNoteForChat(fullNote);
+              setTimeout(() => { chatbotRef.current?.open(); }, 100);
+            }
           }}
           title="Select note to chat with"
         />
-
         <NoteSelector
           trigger={
-            <Button
-              variant="default"
-              size="default"
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
+            <Button variant="default" size="default" className="bg-green-600 hover:bg-green-700 text-white">
               <FileText className="h-5 w-5 mr-2" />
               <span>Convert to Template</span>
             </Button>
           }
-          notes={(notes.filter(note => note.type !== 'lecture')) as NoteWithoutUid[]}
+          notes={notes.filter(n => n.type !== 'lecture').map(({ uid, ...rest }) => rest)}
           onNoteSelect={(note) => {
-            setSelectedNoteForTemplate({ ...note, uid: user!.uid });
-            setTimeout(() => {
-              templateConverterRef.current?.open();
-            }, 100);
+            const fullNote = notes.find(n => n.id === note.id);
+            if (fullNote) {
+              setSelectedNoteForTemplate(fullNote);
+              setTimeout(() => { templateConverterRef.current?.open(); }, 100);
+            }
           }}
           title="Select note to convert"
         />
-
         <NoteSelector
           trigger={
-            <Button
-              variant="default"
-              size="default"
-              className="bg-purple-600 hover:bg-purple-700 text-white"
-            >
+            <Button variant="default" size="default" className="bg-purple-600 hover:bg-purple-700 text-white">
               <FileText className="h-5 w-5 mr-2" />
               <span>Flash Cards</span>
             </Button>
           }
-          notes={(notes.filter(note => note.type === 'lecture')) as NoteWithoutUid[]}
+          notes={notes.filter(n => n.type === 'lecture').map(({ uid, ...rest }) => rest)}
           onNoteSelect={(note) => {
-            setSelectedNoteForFlashCards({ ...note, uid: user!.uid });
-            setTimeout(() => {
-              flashCardsRef.current?.open();
-            }, 100);
+            const fullNote = notes.find(n => n.id === note.id);
+            if (fullNote) {
+              setSelectedNoteForFlashCards(fullNote);
+              setTimeout(() => { flashCardsRef.current?.open(); }, 100);
+            }
           }}
           title="Select lecture to view flash cards"
         />
-
         <NoteSelector
           trigger={
-            <Button
-              variant="default"
-              size="default"
-              className="bg-yellow-600 hover:bg-yellow-700 text-white"
-            >
+            <Button variant="default" size="default" className="bg-yellow-600 hover:bg-yellow-700 text-white">
               <FileText className="h-5 w-5 mr-2" />
               <span>Quiz</span>
             </Button>
           }
-          notes={(notes.filter(note => note.type === 'lecture')) as NoteWithoutUid[]}
+          notes={notes.filter(n => n.type === 'lecture').map(({ uid, ...rest }) => rest)}
           onNoteSelect={(note) => {
-            setSelectedNoteForQuiz({ ...note, uid: user!.uid });
-            setTimeout(() => {
-              quizRef.current?.open();
-            }, 100);
+            const fullNote = notes.find(n => n.id === note.id);
+            if (fullNote) {
+              setSelectedNoteForQuiz(fullNote);
+              setTimeout(() => { quizRef.current?.open(); }, 100);
+            }
           }}
           title="Select lecture to take quiz"
         />
       </div>
 
       {/* Notes List Component */}
-      {isLoading ? (
-        <div className="flex justify-center items-center h-full">
+      {isLoading && notes.length === 0 ? (
+        <div className="flex-1 flex justify-center items-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
         </div>
       ) : (
-        <NotesList userId={user.uid} notes={filteredNotes} />
+        <div className="flex-1 overflow-y-auto">
+          <NotesList userId={user.uid} notes={filteredNotes} />
+        </div>
       )}
 
       {/* New Note Button */}
@@ -791,46 +727,42 @@ export default function Home() {
         <div className="w-32 h-1 bg-zinc-600 rounded-full"></div>
       </div>
 
-      {/* Chatbot */}
+      {/* Conditionally Rendered Components */} 
       {selectedNoteForChat && (
         <Chatbot
           ref={chatbotRef}
-          transcript={selectedNoteForChat.formattedTranscript || ""}
+          transcript={selectedNoteForChat.formattedTranscript || selectedNoteForChat.transcript || ""}
           onClose={() => setSelectedNoteForChat(null)}
           hideTrigger={true}
         />
       )}
-
-      {/* Template Converter */}
       {selectedNoteForTemplate && (
         <TemplateConverter
           ref={templateConverterRef}
-          transcript={selectedNoteForTemplate.formattedTranscript || ""}
+          transcript={selectedNoteForTemplate.formattedTranscript || selectedNoteForTemplate.transcript || ""}
           onClose={() => setSelectedNoteForTemplate(null)}
           hideTrigger={true}
         />
       )}
-
-      {/* Flash Cards */}
       {selectedNoteForFlashCards && (
         <FlashCards
           ref={flashCardsRef}
           flashCardsText={selectedNoteForFlashCards.flashCards}
           onClose={() => setSelectedNoteForFlashCards(null)}
+          hideTrigger={true}
         />
       )}
-
-      {/* Quiz */}
       {selectedNoteForQuiz && (
         <Quiz
           ref={quizRef}
           mcqText={selectedNoteForQuiz.mcq}
           onClose={() => setSelectedNoteForQuiz(null)}
+          hideTrigger={true}
         />
       )}
 
       {/* Modals */}
-      {showModal && renderInitialModal()}
+      {showModal && renderInitialModal()} 
       {showRecordingModal && renderRecordingModal()}
 
       {/* Toast Notification */}
