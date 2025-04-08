@@ -14,6 +14,8 @@ import { NoteSelector } from "@/components/note-selector";
 import { Chatbot, ChatbotRef } from "@/components/chatbot";
 import { TemplateConverter, TemplateConverterRef } from "@/components/template-converter";
 import { FeedbackButton } from "@/components/feedback-button";
+import { FlashCards, FlashCardsRef } from "@/components/flash-cards";
+import Quiz, { QuizRef } from "@/components/quiz";
 
 
 // Define Note interface
@@ -25,7 +27,7 @@ interface Note {
   numberOfPeople: number;
   formattedTranscript?: string;
   uid: string;
-  type?: 'audio' | 'youtube';
+  type?: 'audio' | 'youtube' | 'lecture';
 }
 
 // Define NoteWithoutUid type for note selector
@@ -50,11 +52,16 @@ export default function Home() {
   const [context, setContext] = useState<string>('');
   const [selectedNoteForChat, setSelectedNoteForChat] = useState<Note | null>(null);
   const [selectedNoteForTemplate, setSelectedNoteForTemplate] = useState<Note | null>(null);
+  const [selectedNoteForFlashCards, setSelectedNoteForFlashCards] = useState<Note | null>(null);
+  const [selectedNoteForQuiz, setSelectedNoteForQuiz] = useState<Note | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const chatbotRef = useRef<ChatbotRef>(null)
   const templateConverterRef = useRef<TemplateConverterRef>(null)
+  const flashCardsRef = useRef<FlashCardsRef>(null)
+  const quizRef = useRef<QuizRef>(null)
+  const [contentType, setContentType] = useState<'meeting' | 'lecture' | null>(null);
 
   // Fetch notes from Firestore
   useEffect(() => {
@@ -76,11 +83,19 @@ export default function Home() {
       orderBy("createdAt", "desc")
     );
 
+    // Fetch lecture notes
+    const lectureQuery = query(
+      collection(db, "lectureTranscripts"),
+      where("userId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    );
+
     let audioNotes: Note[] = [];
     let youtubeNotes: Note[] = [];
+    let lectureNotes: Note[] = [];
     let hasError = false;
 
-    // Set up listeners for both collections
+    // Set up listeners for all collections
     const unsubscribeAudio = onSnapshot(audioQuery, 
       (audioSnapshot) => {
         audioNotes = audioSnapshot.docs.map((doc) => {
@@ -107,7 +122,7 @@ export default function Home() {
         });
 
         // Update notes state with combined notes
-        setNotes([...youtubeNotes, ...audioNotes]);
+        setNotes([...youtubeNotes, ...lectureNotes, ...audioNotes]);
         setIsLoading(false);
       },
       (error) => {
@@ -143,7 +158,7 @@ export default function Home() {
         });
 
         // Update notes state with combined notes
-        setNotes([...youtubeNotes, ...audioNotes]);
+        setNotes([...youtubeNotes, ...lectureNotes, ...audioNotes]);
         setIsLoading(false);
       },
       (error) => {
@@ -153,10 +168,48 @@ export default function Home() {
       }
     );
 
+    const unsubscribeLecture = onSnapshot(lectureQuery, 
+      (lectureSnapshot) => {
+        lectureNotes = lectureSnapshot.docs.map((doc) => {
+          const data = doc.data();
+          const timestamp = data.createdAt?.toDate();
+          const formattedDate = timestamp
+            ? timestamp.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "No date";
+
+          return {
+            id: doc.id,
+            meetingName: data.lectureTitle || data.meetingName || data.fileName || "Untitled Lecture",
+            shortSummary: data.shortSummary?.replace(/###.*?:/g, "").trim() || "Processing...",
+            //shortSummary: data.shortSummary?.substring(0, 100) + "..." || "Processing...",
+            createdAt: formattedDate,
+            numberOfPeople: 1,
+            uid: data.userId || user.uid || "",
+            formattedTranscript: data.formattedTranscript || "",
+            type: 'lecture' as const,
+          };
+        });
+
+        // Update notes state with combined notes
+        setNotes([...youtubeNotes, ...lectureNotes, ...audioNotes]);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching lecture notes:", error);
+        hasError = true;
+        setIsLoading(false);
+      }
+    );
+
     // Clean up listeners on unmount
     return () => {
       unsubscribeAudio();
       unsubscribeYoutube();
+      unsubscribeLecture();
     };
   }, [user]);
 
@@ -305,23 +358,43 @@ export default function Home() {
       const uploadTask = await uploadBytes(storageRef, fileToUpload);
       fileUrl = await getDownloadURL(uploadTask.ref);
       
-      // Create a document in Firestore
-      await addDoc(collection(db, "audioProcessing"), {
-        userId: user.uid,
-        fileName: fileName,
-        fileUrl: fileUrl,
-        downloadableUrl: fileUrl,
-        filePath: filePath,
-        context: context,
-        status: "pending",
-        createdAt: serverTimestamp(),
-      });
+      // Determine which collection to use based on content type
+      const collectionName = contentType === 'lecture' ? 'lectureTranscripts' : 'audioProcessing';
+      
+      // Create a document in Firestore with appropriate fields
+      if (contentType === 'lecture') {
+        // For lectures, use lectureTitle instead of meetingName
+        await addDoc(collection(db, collectionName), {
+          userId: user.uid,
+          fileName: fileName,
+          fileUrl: fileUrl,
+          downloadableUrl: fileUrl,
+          filePath: filePath,
+          lectureTitle: fileName.replace(/\.[^/.]+$/, ""), // Use filename without extension as lecture title
+          context: context,
+          status: "pending",
+          createdAt: serverTimestamp(),
+        });
+      } else {
+        // For meetings, use the original fields
+        await addDoc(collection(db, collectionName), {
+          userId: user.uid,
+          fileName: fileName,
+          fileUrl: fileUrl,
+          downloadableUrl: fileUrl,
+          filePath: filePath,
+          context: context,
+          status: "pending",
+          createdAt: serverTimestamp(),
+        });
+      }
 
       // Reset states
       setSelectedFile(null);
       setAudioBlob(null);
       setRecordingTime(0);
       setContext('');
+      setContentType(null);
       setShowModal(false);
       setShowRecordingModal(false);
 
@@ -346,6 +419,7 @@ export default function Home() {
               setShowModal(false);
               setSelectedFile(null);
               setContext("");
+              setContentType(null);
             }}
             className="text-zinc-400 hover:text-white transition-colors"
             disabled={isUploading}
@@ -366,26 +440,61 @@ export default function Home() {
 
           {!selectedFile ? (
             <>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center space-x-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl p-4 transition-colors text-white"
-                disabled={isUploading}
-              >
-                <Upload className="w-6 h-6" />
-                <span className="font-medium">Upload File</span>
-              </button>
+              <div className="space-y-2">
+                <h3 className="text-lg font-medium text-white">Corporate Meeting</h3>
+                <button
+                  onClick={() => {
+                    setContentType('meeting');
+                    fileInputRef.current?.click();
+                  }}
+                  className="flex items-center space-x-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl p-4 transition-colors text-white w-full"
+                  disabled={isUploading}
+                >
+                  <Upload className="w-6 h-6" />
+                  <span className="font-medium">Upload Meeting</span>
+                </button>
 
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  setShowRecordingModal(true);
-                }}
-                className="flex items-center space-x-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl p-4 transition-colors text-white"
-                disabled={isUploading}
-              >
-                <Mic className="w-6 h-6" />
-                <span className="font-medium">Start Recording Audio</span>
-              </button>
+                <button
+                  onClick={() => {
+                    setContentType('meeting');
+                    setShowModal(false);
+                    setShowRecordingModal(true);
+                  }}
+                  className="flex items-center space-x-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl p-4 transition-colors text-white w-full"
+                  disabled={isUploading}
+                >
+                  <Mic className="w-6 h-6" />
+                  <span className="font-medium">Start Recording Meeting</span>
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-lg font-medium text-white">Lecture</h3>
+                <button
+                  onClick={() => {
+                    setContentType('lecture');
+                    fileInputRef.current?.click();
+                  }}
+                  className="flex items-center space-x-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl p-4 transition-colors text-white w-full"
+                  disabled={isUploading}
+                >
+                  <Upload className="w-6 h-6" />
+                  <span className="font-medium">Upload Lecture</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setContentType('lecture');
+                    setShowModal(false);
+                    setShowRecordingModal(true);
+                  }}
+                  className="flex items-center space-x-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl p-4 transition-colors text-white w-full"
+                  disabled={isUploading}
+                >
+                  <Mic className="w-6 h-6" />
+                  <span className="font-medium">Start Recording Lecture</span>
+                </button>
+              </div>
             </>
           ) : (
             <div className="space-y-4">
@@ -453,7 +562,9 @@ export default function Home() {
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
       <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-800">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-white">Record Audio</h2>
+          <h2 className="text-xl font-semibold text-white">
+            {contentType === 'lecture' ? 'Record Lecture' : 'Record Meeting'}
+          </h2>
           <button 
             onClick={() => {
               stopRecording();
@@ -461,6 +572,7 @@ export default function Home() {
               setAudioBlob(null);
               setRecordingTime(0);
               setContext('');
+              setContentType(null);
             }}
             className="text-zinc-400 hover:text-white transition-colors"
             disabled={isUploading}
@@ -599,7 +711,7 @@ export default function Home() {
               <span>Convert to Template</span>
             </Button>
           }
-          notes={notes as NoteWithoutUid[]}
+          notes={(notes.filter(note => note.type !== 'lecture')) as NoteWithoutUid[]}
           onNoteSelect={(note) => {
             setSelectedNoteForTemplate({ ...note, uid: user!.uid });
             setTimeout(() => {
@@ -607,6 +719,48 @@ export default function Home() {
             }, 100);
           }}
           title="Select note to convert"
+        />
+
+        <NoteSelector
+          trigger={
+            <Button
+              variant="default"
+              size="default"
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              <FileText className="h-5 w-5 mr-2" />
+              <span>Flash Cards</span>
+            </Button>
+          }
+          notes={(notes.filter(note => note.type === 'lecture')) as NoteWithoutUid[]}
+          onNoteSelect={(note) => {
+            setSelectedNoteForFlashCards({ ...note, uid: user!.uid });
+            setTimeout(() => {
+              flashCardsRef.current?.open();
+            }, 100);
+          }}
+          title="Select lecture to view flash cards"
+        />
+
+        <NoteSelector
+          trigger={
+            <Button
+              variant="default"
+              size="default"
+              className="bg-yellow-600 hover:bg-yellow-700 text-white"
+            >
+              <FileText className="h-5 w-5 mr-2" />
+              <span>Quiz</span>
+            </Button>
+          }
+          notes={(notes.filter(note => note.type === 'lecture')) as NoteWithoutUid[]}
+          onNoteSelect={(note) => {
+            setSelectedNoteForQuiz({ ...note, uid: user!.uid });
+            setTimeout(() => {
+              quizRef.current?.open();
+            }, 100);
+          }}
+          title="Select lecture to take quiz"
         />
       </div>
 
@@ -650,6 +804,24 @@ export default function Home() {
           ref={templateConverterRef}
           transcript={selectedNoteForTemplate.formattedTranscript || ""}
           onClose={() => setSelectedNoteForTemplate(null)}
+        />
+      )}
+
+      {/* Flash Cards */}
+      {selectedNoteForFlashCards && (
+        <FlashCards
+          ref={flashCardsRef}
+          flashCardsText={selectedNoteForFlashCards.flashCards}
+          onClose={() => setSelectedNoteForFlashCards(null)}
+        />
+      )}
+
+      {/* Quiz */}
+      {selectedNoteForQuiz && (
+        <Quiz
+          ref={quizRef}
+          mcqText={selectedNoteForQuiz.mcq}
+          onClose={() => setSelectedNoteForQuiz(null)}
         />
       )}
 

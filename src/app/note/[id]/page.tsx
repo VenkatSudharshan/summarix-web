@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
@@ -11,6 +11,8 @@ import { Chatbot, ChatbotRef } from "@/components/chatbot"
 import { TemplateConverter, TemplateConverterRef } from "@/components/template-converter"
 import { Button } from "@/components/ui/button";
 import { MessageSquare, FileText } from "lucide-react";
+import { FlashCards, FlashCardsRef } from "@/components/flash-cards";
+import Quiz, { QuizRef } from "@/components/quiz";
 
 interface Note {
   id: string;
@@ -24,8 +26,14 @@ interface Note {
   formattedTranscript?: string;
   summary?: string;
   actionItems?: string | string[];
-  type?: 'audio' | 'youtube';
+  type?: 'audio' | 'youtube' | 'lecture';
   url?: string;
+  lectureNotes?: string;
+  topicsCovered?: string;
+  lectureTitle?: string;
+  downloadableUrl?: string;
+  flashCards?: string;
+  mcq?: string;
 }
 
 export default function NotePage() {
@@ -36,6 +44,8 @@ export default function NotePage() {
   const [activeTab, setActiveTab] = useState("transcript");
   const chatbotRef = useRef<ChatbotRef>(null);
   const templateConverterRef = useRef<TemplateConverterRef>(null);
+  const flashCardsRef = useRef<FlashCardsRef>(null);
+  const quizRef = useRef<QuizRef>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -49,18 +59,29 @@ export default function NotePage() {
       try {
         // Try to fetch from audioProcessing collection first
         let noteDoc = await getDoc(doc(db, "audioProcessing", id as string));
+        let noteType: 'audio' | 'youtube' | 'lecture' = 'audio';
         
         // If not found in audioProcessing, try youtubeTranscriptions
         if (!noteDoc.exists()) {
           noteDoc = await getDoc(doc(db, "youtubeTranscriptions", id as string));
+          noteType = 'youtube';
+        }
+        
+        // If not found in youtubeTranscriptions, try lectureTranscripts
+        if (!noteDoc.exists()) {
+          noteDoc = await getDoc(doc(db, "lectureTranscripts", id as string));
+          noteType = 'lecture';
         }
         
         if (noteDoc.exists()) {
           const data = noteDoc.data();
+          console.log("Firestore data:", data);
+          console.log("Flash cards from doc:", data.flashCards);
           setNote({ 
             id: noteDoc.id, 
             ...data,
-            type: noteDoc.ref.parent.id === 'audioProcessing' ? 'audio' : 'youtube'
+            type: noteType,
+            numberOfPeople: noteType === 'lecture' ? 1 : (data.numberOfPeople || 1)
           } as Note);
         }
       } catch (error) {
@@ -84,41 +105,12 @@ export default function NotePage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">{note.meetingName}</h1>
+          <h1 className="text-3xl font-bold mb-2">
+            {note.type === 'lecture' ? note.lectureTitle || note.meetingName : note.meetingName}
+          </h1>
           <p className="text-zinc-400">
             {note.createdAt?.toDate ? note.createdAt.toDate().toLocaleDateString() : 'Date not available'} • {note.numberOfPeople} people
           </p>
-        </div>
-
-        {/* Action Buttons - Added above audio component */}
-        <div className="mb-8 flex gap-4">
-          <Button
-            variant="default"
-            size="default"
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-            onClick={() => {
-              if (chatbotRef.current) {
-                chatbotRef.current.open();
-              }
-            }}
-          >
-            <MessageSquare className="h-5 w-5 mr-2" />
-            <span>Chat with Note</span>
-          </Button>
-
-          <Button
-            variant="default"
-            size="default"
-            className="bg-green-600 hover:bg-green-700 text-white"
-            onClick={() => {
-              if (templateConverterRef.current) {
-                templateConverterRef.current.open();
-              }
-            }}
-          >
-            <FileText className="h-5 w-5 mr-2" />
-            <span>Convert to Template</span>
-          </Button>
         </div>
 
         {/* Audio Player - Only show for audio notes */}
@@ -149,12 +141,97 @@ export default function NotePage() {
           </div>
         )}
 
+        {/* Audio Player - Only show for lecture notes */}
+        {note.type === 'lecture' && note.downloadableUrl && (
+          <div className="bg-zinc-900 rounded-xl p-6 mb-8">
+            <audio 
+              controls 
+              className="w-full"
+              src={note.downloadableUrl}
+            >
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        )}
+
+        {/* Action Buttons - Added above audio component */}
+        <div className="mb-8 flex gap-4">
+          <Button
+            variant="default"
+            size="default"
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={() => {
+              if (chatbotRef.current) {
+                chatbotRef.current.open();
+              }
+            }}
+          >
+            <MessageSquare className="h-5 w-5 mr-2" />
+            <span>Chat with Note</span>
+          </Button>
+
+          {note.type === 'lecture' ? (
+            <>
+              <Button
+                variant="default"
+                size="default"
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => {
+                  if (flashCardsRef.current) {
+                    flashCardsRef.current.open();
+                  }
+                }}
+              >
+                <FileText className="h-5 w-5 mr-2" />
+                <span>Flash Cards</span>
+              </Button>
+              
+              <Button
+                variant="default"
+                size="default"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={() => {
+                  if (quizRef.current) {
+                    quizRef.current.open();
+                  }
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+                <span>Generate Quiz</span>
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="default"
+              size="default"
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => {
+                if (templateConverterRef.current) {
+                  templateConverterRef.current.open();
+                }
+              }}
+            >
+              <FileText className="h-5 w-5 mr-2" />
+              <span>Convert to Template</span>
+            </Button>
+          )}
+        </div>
+
         {/* Tabs */}
-        <Tabs defaultValue="transcript" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-4">
+        <Tabs defaultValue={note.type === 'lecture' ? "transcript" : "transcript"} className="w-full">
+          <TabsList className={`grid w-full ${note.type === 'lecture' ? 'grid-cols-3' : 'grid-cols-3'} mb-4`}>
             <TabsTrigger value="transcript">Transcript</TabsTrigger>
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="actionItems">Action Items</TabsTrigger>
+            {note.type === 'lecture' ? (
+              <>
+                <TabsTrigger value="lectureNotes">Lecture Notes</TabsTrigger>
+                <TabsTrigger value="topicsCovered">Key Topics</TabsTrigger>
+              </>
+            ) : (
+              <>
+                <TabsTrigger value="summary">Summary</TabsTrigger>
+                <TabsTrigger value="actionItems">Action Items</TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           <div className="bg-zinc-900 rounded-xl overflow-hidden">
@@ -186,63 +263,85 @@ export default function NotePage() {
               )}
             </TabsContent>
 
-            <TabsContent value="summary" className="p-6 h-[700px] overflow-y-auto">
-              {note.summary ? (
-                <div className="whitespace-pre-wrap">{note.summary}</div>
-              ) : (
-                <div className="text-zinc-400">Summary not available yet.</div>
-              )}
-            </TabsContent>
+            {note.type === 'lecture' ? (
+              <>
+                <TabsContent value="lectureNotes" className="p-6 h-[700px] overflow-y-auto">
+                  {note.lectureNotes ? (
+                    <div className="whitespace-pre-wrap">{note.lectureNotes}</div>
+                  ) : (
+                    <div className="text-zinc-400">Lecture notes not available yet.</div>
+                  )}
+                </TabsContent>
 
-            <TabsContent value="actionItems" className="p-6 h-[700px] overflow-y-auto">
-              {note.actionItems ? (
-                <ul className="space-y-3">
-                  {(() => {
-                    // Process action items
-                    let items: string[] = [];
-                    
-                    if (Array.isArray(note.actionItems)) {
-                      items = note.actionItems;
-                    } else if (typeof note.actionItems === 'string') {
-                      // Split by bullet points and clean up
-                      items = note.actionItems
-                        .split('•')
-                        .map((item: string) => item.trim())
-                        .filter((item: string) => item.length > 0);
-                    }
-                    
-                    return items.map((item, index) => {
-                      // Extract assignee and task
-                      const assigneeMatch = item.match(/^([^:]+):/);
-                      let assignee = '';
-                      let task = item;
-                      
-                      if (assigneeMatch) {
-                        assignee = assigneeMatch[1].trim();
-                        task = item.replace(assigneeMatch[0], '').trim();
-                      }
-                      
-                      return (
-                        <li key={index} className="flex items-start">
-                          <div className="flex-shrink-0 mr-3 mt-1">
-                            <input 
-                              type="checkbox" 
-                              className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div>
-                            {assignee && <span className="font-medium text-green-400">{assignee}: </span>}
-                            <span>{task}</span>
-                          </div>
-                        </li>
-                      );
-                    });
-                  })()}
-                </ul>
-              ) : (
-                <div className="text-zinc-400">Action items not available yet.</div>
-              )}
-            </TabsContent>
+                <TabsContent value="topicsCovered" className="p-6 h-[700px] overflow-y-auto">
+                  {note.topicsCovered ? (
+                    <div className="whitespace-pre-wrap">{note.topicsCovered}</div>
+                  ) : (
+                    <div className="text-zinc-400">Key topics not available yet.</div>
+                  )}
+                </TabsContent>
+              </>
+            ) : (
+              <>
+                <TabsContent value="summary" className="p-6 h-[700px] overflow-y-auto">
+                  {note.summary ? (
+                    <div className="whitespace-pre-wrap">{note.summary}</div>
+                  ) : (
+                    <div className="text-zinc-400">Summary not available yet.</div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="actionItems" className="p-6 h-[700px] overflow-y-auto">
+                  {note.actionItems ? (
+                    <ul className="space-y-3">
+                      {(() => {
+                        // Process action items
+                        let items: string[] = [];
+                        
+                        if (Array.isArray(note.actionItems)) {
+                          items = note.actionItems;
+                        } else if (typeof note.actionItems === 'string') {
+                          // Split by bullet points and clean up
+                          items = note.actionItems
+                            .split('•')
+                            .map((item: string) => item.trim())
+                            .filter((item: string) => item.length > 0);
+                        }
+                        
+                        return items.map((item, index) => {
+                          // Extract assignee and task
+                          const assigneeMatch = item.match(/^([^:]+):/);
+                          let assignee = '';
+                          let task = item;
+                          
+                          if (assigneeMatch) {
+                            assignee = assigneeMatch[1].trim();
+                            task = item.replace(assigneeMatch[0], '').trim();
+                          }
+                          
+                          return (
+                            <li key={index} className="flex items-start">
+                              <div className="flex-shrink-0 mr-3 mt-1">
+                                <input 
+                                  type="checkbox" 
+                                  className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500"
+                                />
+                              </div>
+                              <div>
+                                {assignee && <span className="font-medium text-green-400">{assignee}: </span>}
+                                <span>{task}</span>
+                              </div>
+                            </li>
+                          );
+                        });
+                      })()}
+                    </ul>
+                  ) : (
+                    <div className="text-zinc-400">Action items not available yet.</div>
+                  )}
+                </TabsContent>
+              </>
+            )}
           </div>
         </Tabs>
       </div>
@@ -255,11 +354,27 @@ export default function NotePage() {
             transcript={note.formattedTranscript} 
             hideTrigger={true}
           />
-          <TemplateConverter 
-            ref={templateConverterRef}
-            transcript={note.formattedTranscript} 
-            hideTrigger={true}
-          />
+          {note.type !== 'lecture' && (
+            <TemplateConverter 
+              ref={templateConverterRef}
+              transcript={note.formattedTranscript} 
+              hideTrigger={true}
+            />
+          )}
+          {note.type === 'lecture' && (
+            <>
+              <FlashCards
+                ref={flashCardsRef}
+                flashCardsText={note.flashCards}
+                hideTrigger={true}
+              />
+              <Quiz
+                ref={quizRef}
+                mcqText={note.mcq}
+                hideTrigger={true}
+              />
+            </>
+          )}
         </>
       )}
     </div>

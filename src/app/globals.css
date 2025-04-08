@@ -135,3 +135,45 @@
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
 }
+
+/* Flash Card Styles */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+  position: relative;
+  width: 100%;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+.flipped .transform-style-3d {
+  transform: rotateY(180deg);
+}
+
+@layer utilities {
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+  
+  .rotate-x-180 {
+    transform: rotateX(180deg);
+  }
+}
