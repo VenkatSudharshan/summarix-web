@@ -101,21 +101,21 @@ export default function NotePage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-8">
+    <div className="min-h-screen bg-black text-white p-4 sm:p-6 md:p-8">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">
+        <div className="mb-4 sm:mb-6 md:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">
             {note.type === 'lecture' ? note.lectureTitle || note.meetingName : note.meetingName}
           </h1>
-          <p className="text-zinc-400">
+          <p className="text-sm sm:text-base text-zinc-400">
             {note.createdAt?.toDate ? note.createdAt.toDate().toLocaleDateString() : 'Date not available'} • {note.numberOfPeople} people
           </p>
         </div>
 
         {/* Audio Player - Only show for audio notes */}
         {note.type === 'audio' && note.fileUrl && (
-          <div className="bg-zinc-900 rounded-xl p-6 mb-8">
+          <div className="bg-zinc-900 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 md:mb-8">
             <audio 
               controls 
               className="w-full"
@@ -128,7 +128,7 @@ export default function NotePage() {
 
         {/* YouTube URL - Only show for YouTube notes */}
         {note.type === 'youtube' && note.url && (
-          <div className="bg-zinc-900 rounded-xl p-6 mb-8">
+          <div className="bg-zinc-900 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 md:mb-8">
             <a 
               href={note.url}
               target="_blank"
@@ -143,23 +143,23 @@ export default function NotePage() {
 
         {/* Audio Player - Only show for lecture notes */}
         {note.type === 'lecture' && note.downloadableUrl && (
-          <div className="bg-zinc-900 rounded-xl p-6 mb-8">
+          <div className="bg-zinc-900 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 md:mb-8">
             <audio 
               controls 
               className="w-full"
               src={note.downloadableUrl}
             >
-              Your browser does not support this audio element.
+              Your browser does not support the audio element.
             </audio>
           </div>
         )}
 
-        {/* Action Buttons - Added above audio component */}
-        <div className="mb-8 flex gap-4">
+        {/* Action Buttons */}
+        <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row gap-2 sm:gap-4">
           <Button
             variant="default"
             size="default"
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
             onClick={() => {
               if (chatbotRef.current) {
                 chatbotRef.current.open();
@@ -175,7 +175,7 @@ export default function NotePage() {
               <Button
                 variant="default"
                 size="default"
-                className="bg-green-600 hover:bg-green-700 text-white"
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
                 onClick={() => {
                   if (flashCardsRef.current) {
                     flashCardsRef.current.open();
@@ -189,7 +189,7 @@ export default function NotePage() {
               <Button
                 variant="default"
                 size="default"
-                className="bg-purple-600 hover:bg-purple-700 text-white"
+                className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white"
                 onClick={() => {
                   if (quizRef.current) {
                     quizRef.current.open();
@@ -204,7 +204,7 @@ export default function NotePage() {
             <Button
               variant="default"
               size="default"
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
               onClick={() => {
                 if (templateConverterRef.current) {
                   templateConverterRef.current.open();
@@ -219,25 +219,25 @@ export default function NotePage() {
 
         {/* Tabs */}
         <Tabs defaultValue={note.type === 'lecture' ? "transcript" : "transcript"} className="w-full">
-          <TabsList className={`grid w-full ${note.type === 'lecture' ? 'grid-cols-3' : 'grid-cols-3'} mb-4`}>
-            <TabsTrigger value="transcript">Transcript</TabsTrigger>
+          <TabsList className={`grid w-full ${note.type === 'lecture' ? 'grid-cols-3' : 'grid-cols-3'} mb-4 gap-2`}>
+            <TabsTrigger value="transcript" className="text-sm sm:text-base">Transcript</TabsTrigger>
             {note.type === 'lecture' ? (
               <>
-                <TabsTrigger value="lectureNotes">Lecture Notes</TabsTrigger>
-                <TabsTrigger value="topicsCovered">Key Topics</TabsTrigger>
+                <TabsTrigger value="lectureNotes" className="text-sm sm:text-base">Lecture Notes</TabsTrigger>
+                <TabsTrigger value="topicsCovered" className="text-sm sm:text-base">Key Topics</TabsTrigger>
               </>
             ) : (
               <>
-                <TabsTrigger value="summary">Summary</TabsTrigger>
-                <TabsTrigger value="actionItems">Action Items</TabsTrigger>
+                <TabsTrigger value="summary" className="text-sm sm:text-base">Summary</TabsTrigger>
+                <TabsTrigger value="actionItems" className="text-sm sm:text-base">Action Items</TabsTrigger>
               </>
             )}
           </TabsList>
 
           <div className="bg-zinc-900 rounded-xl overflow-hidden">
-            <TabsContent value="transcript" className="p-6 h-[700px] overflow-y-auto">
+            <TabsContent value="transcript" className="p-4 sm:p-6 h-[500px] sm:h-[600px] md:h-[700px] overflow-y-auto">
               {note.formattedTranscript ? (
-                <div className="whitespace-pre-wrap font-mono text-sm">
+                <div className="whitespace-pre-wrap font-mono text-xs sm:text-sm">
                   {(() => {
                     // Preprocess the transcript to fix formatting issues
                     const processedTranscript = note.formattedTranscript
@@ -254,7 +254,7 @@ export default function NotePage() {
                       const cleanLine = line.trim();
                       if (!cleanLine) return null;
                       
-                      return <div key={index} className="mb-3">{cleanLine}</div>;
+                      return <div key={index} className="mb-2 sm:mb-3">{cleanLine}</div>;
                     });
                   })()}
                 </div>
@@ -265,17 +265,17 @@ export default function NotePage() {
 
             {note.type === 'lecture' ? (
               <>
-                <TabsContent value="lectureNotes" className="p-6 h-[700px] overflow-y-auto">
+                <TabsContent value="lectureNotes" className="p-4 sm:p-6 h-[500px] sm:h-[600px] md:h-[700px] overflow-y-auto">
                   {note.lectureNotes ? (
-                    <div className="whitespace-pre-wrap">{note.lectureNotes}</div>
+                    <div className="whitespace-pre-wrap text-sm sm:text-base">{note.lectureNotes}</div>
                   ) : (
                     <div className="text-zinc-400">Lecture notes not available yet.</div>
                   )}
                 </TabsContent>
 
-                <TabsContent value="topicsCovered" className="p-6 h-[700px] overflow-y-auto">
+                <TabsContent value="topicsCovered" className="p-4 sm:p-6 h-[500px] sm:h-[600px] md:h-[700px] overflow-y-auto">
                   {note.topicsCovered ? (
-                    <div className="whitespace-pre-wrap">{note.topicsCovered}</div>
+                    <div className="whitespace-pre-wrap text-sm sm:text-base">{note.topicsCovered}</div>
                   ) : (
                     <div className="text-zinc-400">Key topics not available yet.</div>
                   )}
@@ -283,17 +283,17 @@ export default function NotePage() {
               </>
             ) : (
               <>
-                <TabsContent value="summary" className="p-6 h-[700px] overflow-y-auto">
+                <TabsContent value="summary" className="p-4 sm:p-6 h-[500px] sm:h-[600px] md:h-[700px] overflow-y-auto">
                   {note.summary ? (
-                    <div className="whitespace-pre-wrap">{note.summary}</div>
+                    <div className="whitespace-pre-wrap text-sm sm:text-base">{note.summary}</div>
                   ) : (
                     <div className="text-zinc-400">Summary not available yet.</div>
                   )}
                 </TabsContent>
 
-                <TabsContent value="actionItems" className="p-6 h-[700px] overflow-y-auto">
+                <TabsContent value="actionItems" className="p-4 sm:p-6 h-[500px] sm:h-[600px] md:h-[700px] overflow-y-auto">
                   {note.actionItems ? (
-                    <ul className="space-y-3">
+                    <ul className="space-y-2 sm:space-y-3">
                       {(() => {
                         // Process action items
                         let items: string[] = [];
@@ -327,7 +327,7 @@ export default function NotePage() {
                                   className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500"
                                 />
                               </div>
-                              <div>
+                              <div className="text-sm sm:text-base">
                                 {assignee && <span className="font-medium text-green-400">{assignee}: </span>}
                                 <span>{task}</span>
                               </div>
@@ -346,7 +346,7 @@ export default function NotePage() {
         </Tabs>
       </div>
 
-      {/* Chatbot and Template Converter - Moved outside the main content div */}
+      {/* Chatbot and Template Converter */}
       {note.formattedTranscript && (
         <>
           <Chatbot 
