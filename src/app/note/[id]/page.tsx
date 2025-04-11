@@ -149,7 +149,7 @@ export default function NotePage() {
               className="w-full"
               src={note.downloadableUrl}
             >
-              Your browser does not support the audio element.
+              Your browser does not support this audio element.
             </audio>
           </div>
         )}
