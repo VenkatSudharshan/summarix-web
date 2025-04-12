@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { Search, Plus, X, Mic, Upload, FileText, StopCircle, MessageSquare } from "lucide-react";
 import { addDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Toast from "@/components/Toast";
 import { Button } from "@/components/ui/button";
 import { NoteSelector } from "@/components/note-selector";
@@ -301,42 +301,56 @@ export default function Home() {
       }
 
       // Upload to Firebase Storage
-      const storage = getStorage();
       filePath = `audio-files/${user.uid}/${fileName}`;
       const storageRef = ref(storage, filePath);
       
-      const uploadTask = await uploadBytes(storageRef, fileToUpload);
-      fileUrl = await getDownloadURL(uploadTask.ref);
+      try {
+        const uploadTask = await uploadBytes(storageRef, fileToUpload);
+        fileUrl = await getDownloadURL(uploadTask.ref);
+        console.log('File uploaded successfully:', fileUrl);
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        setToast({ message: 'Error uploading file', type: 'error' });
+        setIsUploading(false);
+        return;
+      }
       
       // Determine which collection to use based on content type
       const collectionName = contentType === 'lecture' ? 'lectureTranscripts' : 'audioProcessing';
       
       // Create a document in Firestore with appropriate fields
-      if (contentType === 'lecture') {
-        // For lectures, use lectureTitle instead of meetingName
-        await addDoc(collection(db, collectionName), {
-          userId: user.uid,
-          fileName: fileName,
-          fileUrl: fileUrl,
-          downloadableUrl: fileUrl,
-          filePath: filePath,
-          lectureTitle: fileName.replace(/\.[^/.]+$/, ""), // Use filename without extension as lecture title
-          context: context,
-          status: "pending",
-          createdAt: serverTimestamp(),
-        });
-      } else {
-        // For meetings, use the original fields
-        await addDoc(collection(db, collectionName), {
-          userId: user.uid,
-          fileName: fileName,
-          fileUrl: fileUrl,
-          downloadableUrl: fileUrl,
-          filePath: filePath,
-          context: context,
-          status: "pending",
-          createdAt: serverTimestamp(),
-        });
+      try {
+        if (contentType === 'lecture') {
+          // For lectures, use lectureTitle instead of meetingName
+          await addDoc(collection(db, collectionName), {
+            userId: user.uid,
+            fileName: fileName,
+            fileUrl: fileUrl,
+            downloadableUrl: fileUrl,
+            filePath: filePath,
+            lectureTitle: fileName.replace(/\.[^/.]+$/, ""), // Use filename without extension as lecture title
+            context: context,
+            status: "pending",
+            createdAt: serverTimestamp(),
+          });
+        } else {
+          // For meetings, use the original fields
+          await addDoc(collection(db, collectionName), {
+            userId: user.uid,
+            fileName: fileName,
+            fileUrl: fileUrl,
+            downloadableUrl: fileUrl,
+            filePath: filePath,
+            context: context,
+            status: "pending",
+            createdAt: serverTimestamp(),
+          });
+        }
+      } catch (error) {
+        console.error('Error creating Firestore document:', error);
+        setToast({ message: 'Error saving file information', type: 'error' });
+        setIsUploading(false);
+        return;
       }
 
       // Reset states
@@ -347,13 +361,10 @@ export default function Home() {
       setContentType(null);
       setShowModal(false);
       setShowRecordingModal(false);
-
-      // Show success toast
-      setToast({ message: 'Audio uploaded successfully!', type: 'success' });
-
+      setToast({ message: 'File uploaded successfully', type: 'success' });
     } catch (error) {
-      console.error('Error creating note:', error);
-      setToast({ message: 'Error creating note. Please try again.', type: 'error' });
+      console.error('Error in handleUploadFile:', error);
+      setToast({ message: 'An error occurred', type: 'error' });
     } finally {
       setIsUploading(false);
     }
@@ -629,12 +640,12 @@ export default function Home() {
       </div>
 
       {/* Action Buttons */}
-      <div className="px-8 mb-6 flex gap-4">
+      <div className="px-4 sm:px-8 mb-6 flex flex-col sm:flex-row gap-2 sm:gap-4">
         <NoteSelector
           trigger={
-            <Button variant="default" size="default" className="bg-blue-600 hover:bg-blue-700 text-white">
-              <MessageSquare className="h-5 w-5 mr-2" />
-              <span>Chat with Note</span>
+            <Button variant="default" size="default" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center">
+              <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+              <span className="text-sm sm:text-base">Chat with Note</span>
             </Button>
           }
           notes={notes.map(({ uid, ...rest }) => rest)}
@@ -649,9 +660,9 @@ export default function Home() {
         />
         <NoteSelector
           trigger={
-            <Button variant="default" size="default" className="bg-green-600 hover:bg-green-700 text-white">
-              <FileText className="h-5 w-5 mr-2" />
-              <span>Convert to Template</span>
+            <Button variant="default" size="default" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white flex items-center justify-center">
+              <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+              <span className="text-sm sm:text-base">Convert to Template</span>
             </Button>
           }
           notes={notes.filter(n => n.type !== 'lecture').map(({ uid, ...rest }) => rest)}
@@ -666,9 +677,9 @@ export default function Home() {
         />
         <NoteSelector
           trigger={
-            <Button variant="default" size="default" className="bg-purple-600 hover:bg-purple-700 text-white">
-              <FileText className="h-5 w-5 mr-2" />
-              <span>Flash Cards</span>
+            <Button variant="default" size="default" className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center">
+              <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+              <span className="text-sm sm:text-base">Flash Cards</span>
             </Button>
           }
           notes={notes.filter(n => n.type === 'lecture').map(({ uid, ...rest }) => rest)}
@@ -683,9 +694,9 @@ export default function Home() {
         />
         <NoteSelector
           trigger={
-            <Button variant="default" size="default" className="bg-yellow-600 hover:bg-yellow-700 text-white">
-              <FileText className="h-5 w-5 mr-2" />
-              <span>Quiz</span>
+            <Button variant="default" size="default" className="w-full sm:w-auto bg-yellow-600 hover:bg-yellow-700 text-white flex items-center justify-center">
+              <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+              <span className="text-sm sm:text-base">Quiz</span>
             </Button>
           }
           notes={notes.filter(n => n.type === 'lecture').map(({ uid, ...rest }) => rest)}
