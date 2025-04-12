@@ -100,15 +100,18 @@ export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClo
           </Button>
         </SheetTrigger>
       )}
-      <SheetContent side="right" className="w-full sm:w-[800px] p-0">
+      <SheetContent side="right" className="w-full sm:w-[800px] p-0 bg-zinc-900">
         <SheetHeader className="p-6 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-            <SheetClose asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleClose}>
-                <ArrowLeft className="h-5 w-5" />
-                <span className="sr-only">Close</span>
-              </Button>
-            </SheetClose>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="h-8 w-8 bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+              onClick={() => setIsOpen(false)}
+            >
+              <ArrowLeft className="h-5 w-5" />
+              <span className="sr-only">Back</span>
+            </Button>
             <SheetTitle>Chat with Transcript</SheetTitle>
           </div>
         </SheetHeader>

@@ -4,7 +4,7 @@ import { Note } from "@/types/note";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "./ui/sheet";
 import { Button } from "./ui/button";
 import { useState, forwardRef, useImperativeHandle, useEffect } from "react";
-import { ChevronLeft, ChevronRight, RotateCw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCw, ArrowLeft } from "lucide-react";
 
 export interface FlashCardsRef {
   open: () => void;
@@ -146,12 +146,21 @@ export const FlashCards = forwardRef<FlashCardsRef, FlashCardsProps>(
         <SheetContent className="w-full sm:max-w-2xl overflow-hidden bg-[#1C1C1C] flex flex-col">
           <SheetHeader className="px-6 py-4">
             <div className="flex items-center justify-between">
-              <SheetTitle className="text-white text-lg font-medium">Flash Cards</SheetTitle>
-              <SheetClose asChild>
-                <Button variant="ghost" size="icon" className="rounded-lg text-white/70 hover:text-white" onClick={handleClose}>
-                  <X className="h-5 w-5" />
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="h-8 w-8 bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                  onClick={() => {
+                    handleClose();
+                    setIsOpen(false);
+                  }}
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                  <span className="sr-only">Back</span>
                 </Button>
-              </SheetClose>
+                <SheetTitle className="text-white text-lg font-medium">Flash Cards</SheetTitle>
+              </div>
             </div>
           </SheetHeader>
 

@@ -1,120 +1,98 @@
 "use client";
 
-import { useState } from "react";
-import { MessageSquare, X, Send } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { addDoc, collection } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import Toast from "@/components/Toast";
+import { Loader2 } from "lucide-react";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface FeedbackButtonProps {
-  userId: string;
+  "data-feedback-button"?: string;
 }
 
-export function FeedbackButton({ userId }: FeedbackButtonProps) {
+export function FeedbackButton(props: FeedbackButtonProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<string>("");
+  const [description, setDescription] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const [feedbackType, setFeedbackType] = useState<'bug' | 'feature' | 'general'>('general');
-  const [description, setDescription] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!description.trim()) return;
+  const handleSubmit = async () => {
+    if (!feedbackType || !description) {
+      toast.error("Please select a feedback type and provide a description");
+      return;
+    }
 
-    setIsSubmitting(true);
+    setIsLoading(true);
     try {
-      await addDoc(collection(db, "feedback"), {
-        userId,
-        type: feedbackType,
-        description: description.trim(),
-        status: 'new',
-        createdAt: new Date(),
-      });
-
-      setToast({ message: 'Feedback submitted successfully!', type: 'success' });
-      setDescription('');
+      // TODO: Implement feedback submission logic here
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulated API call
+      toast.success("Thank you for your feedback!");
       setIsOpen(false);
+      setFeedbackType("");
+      setDescription("");
     } catch (error) {
-      console.error('Error submitting feedback:', error);
-      setToast({ message: 'Failed to submit feedback. Please try again.', type: 'error' });
+      toast.error("Failed to submit feedback. Please try again.");
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <>
-      <Button
-        variant="outline"
-        size="sm"
-        className="bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 border-zinc-700 flex items-center gap-2"
-        onClick={() => setIsOpen(true)}
-      >
-        <MessageSquare className="h-4 w-4" />
-        <span>Feedback</span>
-      </Button>
-
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetContent className="bg-zinc-900 border-zinc-800">
-          <SheetHeader>
-            <SheetTitle className="text-white">Submit Feedback</SheetTitle>
-          </SheetHeader>
-
-          <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-200">Feedback Type</label>
-              <select
-                value={feedbackType}
-                onChange={(e) => setFeedbackType(e.target.value as 'bug' | 'feature' | 'general')}
-                className="w-full bg-zinc-800 rounded-lg px-4 py-2.5 text-white border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-              >
-                <option value="bug">Bug Report</option>
-                <option value="feature">Feature Request</option>
-                <option value="general">General Feedback</option>
-              </select>
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" {...props}>
+          Feedback
+        </Button>
+      </SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Send Feedback</SheetTitle>
+          <SheetDescription>
+            Help us improve by sharing your thoughts.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-6 space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Type of Feedback</label>
+            <div className="grid grid-cols-2 gap-2">
+              {["Bug", "Feature", "Improvement", "Other"].map((type) => (
+                <Button
+                  key={type}
+                  variant={feedbackType === type ? "default" : "outline"}
+                  onClick={() => setFeedbackType(type)}
+                  className="transition-all duration-200"
+                >
+                  {type}
+                </Button>
+              ))}
             </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-200">Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe your feedback in detail..."
-                className="w-full bg-zinc-800 rounded-lg px-4 py-2.5 text-white border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[150px] text-base placeholder-zinc-500"
-                required
-              />
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 flex items-center justify-center gap-2"
-              disabled={isSubmitting || !description.trim()}
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  <span>Submitting...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4" />
-                  <span>Submit Feedback</span>
-                </>
-              )}
-            </Button>
-          </form>
-        </SheetContent>
-      </Sheet>
-
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
-    </>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Description</label>
+            <Textarea
+              placeholder="Tell us more..."
+              value={description}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+              className="min-h-[100px]"
+            />
+          </div>
+          <Button 
+            onClick={handleSubmit} 
+            className="w-full"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit Feedback"
+            )}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 } 

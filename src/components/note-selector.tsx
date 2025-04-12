@@ -44,9 +44,14 @@ export function NoteSelector({ trigger, onNoteSelect, notes, title }: NoteSelect
       <SheetContent side="right" className="w-full sm:w-[400px] p-0">
         <SheetHeader className="p-6 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsOpen(false)}>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="h-8 w-8 bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+              onClick={() => setIsOpen(false)}
+            >
               <ArrowLeft className="h-5 w-5" />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">Back</span>
             </Button>
             <SheetTitle>{title}</SheetTitle>
           </div>

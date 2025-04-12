@@ -4,7 +4,7 @@ import NotesList from "@/components/NotesList";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { Search, Plus, X, Mic, Upload, FileText, StopCircle, MessageSquare } from "lucide-react";
+import { Search, Plus, X, Mic, Upload, FileText, StopCircle, MessageSquare, Menu, Loader2, ChevronDown } from "lucide-react";
 import { addDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy, getDocs } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -13,9 +13,11 @@ import { Button } from "@/components/ui/button";
 import { NoteSelector } from "@/components/note-selector";
 import { Chatbot, ChatbotRef } from "@/components/chatbot";
 import { TemplateConverter, TemplateConverterRef } from "@/components/template-converter";
-import { FeedbackButton } from "@/components/feedback-button";
 import { FlashCards, FlashCardsRef } from "@/components/flash-cards";
 import Quiz, { QuizRef } from "@/components/quiz";
+import { useAudioRecorder } from '@/hooks/useAudioRecorder';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 
 // Reinstated local Note interface definition
 interface Note {
@@ -50,12 +52,7 @@ export default function Home() {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [showRecordingModal, setShowRecordingModal] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -73,6 +70,39 @@ export default function Home() {
   const flashCardsRef = useRef<FlashCardsRef>(null)
   const quizRef = useRef<QuizRef>(null)
   const [contentType, setContentType] = useState<'meeting' | 'lecture' | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const feedbackButtonRef = useRef<HTMLButtonElement>(null);
+  const [feedbackType, setFeedbackType] = useState<string>("");
+  const [feedbackDescription, setFeedbackDescription] = useState("");
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+  const {
+    startRecording: startAudioRecording,
+    stopRecording: stopAudioRecording,
+    isRecording,
+    error
+  } = useAudioRecorder({
+    onError: (error) => {
+      showToast(error.message, 'error');
+    },
+    onStart: () => {
+      setShowRecordingModal(true);
+      // Start timer
+      const startTime = Date.now();
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 1000);
+    },
+    onStop: (blob) => {
+      setAudioBlob(blob);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    }
+  });
 
   // Fetch notes from Firestore
   useEffect(() => {
@@ -195,150 +225,14 @@ export default function Home() {
     }
   }, [user, loading, router]);
 
-  // Cleanup recording timer/media recorder on unmount
+  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
-      if (mediaRecorderRef.current && isRecording) {
-        mediaRecorderRef.current.stop();
-      }
     };
-  }, [isRecording]);
-
-  // Recording timer effect
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (isRecording) {
-      interval = setInterval(() => { setRecordingTime(prev => prev + 1); }, 1000);
-    }
-    return () => { if (interval) clearInterval(interval); };
-  }, [isRecording]);
-
-  // Recording functions (startRecording, stopRecording, formatTime)
-  const startRecording = async () => {
-    let stream: MediaStream | null = null;
-    try {
-      // More accurate Safari detection
-      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || 
-                      /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showToast('Audio recording is not supported in this browser. Please use Chrome or Firefox.', 'error');
-        return;
-      }
-
-      // Safari-specific audio constraints
-      const constraints = {
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          ...(isSafari ? {
-            sampleRate: 44100,
-            channelCount: 1,
-            sampleSize: 16
-          } : {})
-        }
-      };
-
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      // Initialize audio context for Safari
-      let mediaRecorder;
-      if (isSafari) {
-        try {
-          // Try to use standard MediaRecorder first
-          if (window.MediaRecorder) {
-            mediaRecorder = new MediaRecorder(stream);
-          } else {
-            // Fallback to AudioContext if MediaRecorder is not available
-            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-            const source = audioContext.createMediaStreamSource(stream);
-            const destination = audioContext.createMediaStreamDestination();
-            source.connect(destination);
-            
-            // Try to use webkitMediaRecorder if available
-            if ((window as any).webkitMediaRecorder) {
-              mediaRecorder = new (window as any).webkitMediaRecorder(destination.stream);
-            } else {
-              showToast('Recording is not supported in this browser. Please use Chrome or Firefox.', 'error');
-              stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
-              return;
-            }
-          }
-        } catch (error) {
-          console.error('Error initializing MediaRecorder:', error);
-          showToast('Error initializing audio recording. Please try again.', 'error');
-          stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
-          return;
-        }
-      } else {
-        // For other browsers, use standard MediaRecorder
-        mediaRecorder = new MediaRecorder(stream);
-      }
-
-      const audioChunks: BlobPart[] = [];
-      
-      mediaRecorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        // For Safari, we'll always convert to WAV format
-        const mimeType = isSafari ? 'audio/wav' : 'audio/webm;codecs=opus';
-        const audioBlob = new Blob(audioChunks, { type: mimeType });
-        setAudioBlob(audioBlob);
-        stream?.getTracks().forEach((track: MediaStreamTrack) => track.stop());
-      };
-
-      // Request data more frequently on Safari
-      mediaRecorder.start(isSafari ? 100 : 1000);
-      mediaRecorderRef.current = mediaRecorder;
-      setIsRecording(true);
-      
-      // Start timer
-      const startTime = Date.now();
-      timerIntervalRef.current = setInterval(() => {
-        setRecordingTime(Math.floor((Date.now() - startTime) / 1000));
-      }, 1000);
-
-    } catch (error) {
-      console.error('Error accessing media devices:', error);
-      if (error instanceof Error) {
-        if (error.name === 'NotAllowedError') {
-          showToast('Please allow microphone access to record audio.', 'error');
-        } else if (error.name === 'NotFoundError') {
-          showToast('No microphone found. Please connect a microphone and try again.', 'error');
-        } else if (error.name === 'NotSupportedError' || error.name === 'NotReadableError') {
-          showToast('Recording is not supported or microphone is busy. Please try again.', 'error');
-        } else {
-          showToast('Failed to access microphone. Please try again.', 'error');
-        }
-      }
-      // Ensure we clean up any streams if there's an error
-      if (stream) {
-        stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
-      }
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  // Format time function
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
   // File handling functions (handleFileSelect, handleUploadFile)
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -454,6 +348,21 @@ export default function Home() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleStopRecording = () => {
+    stopAudioRecording();
+    setShowRecordingModal(false);
+    setAudioBlob(null);
+    setRecordingTime(0);
+    setContext('');
+    setContentType(null);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Modal rendering functions (renderInitialModal, renderRecordingModal)
@@ -614,14 +523,7 @@ export default function Home() {
             {contentType === 'lecture' ? 'Record Lecture' : 'Record Meeting'}
           </h2>
           <button 
-            onClick={() => {
-              stopRecording();
-              setShowRecordingModal(false);
-              setAudioBlob(null);
-              setRecordingTime(0);
-              setContext('');
-              setContentType(null);
-            }}
+            onClick={handleStopRecording}
             className="text-zinc-400 hover:text-white transition-colors"
             disabled={isUploading}
           >
@@ -636,7 +538,7 @@ export default function Home() {
 
           {!audioBlob ? (
             <button
-              onClick={isRecording ? stopRecording : startRecording}
+              onClick={isRecording ? stopAudioRecording : startAudioRecording}
               className={`rounded-full p-4 ${
                 isRecording 
                   ? 'bg-red-600 hover:bg-red-700' 
@@ -723,6 +625,102 @@ export default function Home() {
     }
   };
 
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackType || !feedbackDescription) {
+      showToast("Please select a feedback type and provide a description", "error");
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+    try {
+      // Save feedback to Firestore
+      const feedbackRef = collection(db, "feedback");
+      await addDoc(feedbackRef, {
+        type: feedbackType,
+        description: feedbackDescription,
+        createdAt: serverTimestamp(),
+        userId: user?.uid || 'anonymous',
+        userEmail: user?.email || 'anonymous'
+      });
+
+      showToast("Thank you for your feedback!", "success");
+      setIsFeedbackOpen(false);
+      setFeedbackType("");
+      setFeedbackDescription("");
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      showToast("Failed to submit feedback. Please try again.", "error");
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
+  // Replace the Sheet component with a modal for feedback
+  const renderFeedbackModal = () => (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+      <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-800">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-white">Send Feedback</h2>
+          <button
+            onClick={() => setIsFeedbackOpen(false)}
+            className="text-zinc-400 hover:text-white transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-zinc-300">
+              Type of Feedback
+            </label>
+            <div className="relative">
+              <select
+                value={feedbackType}
+                onChange={(e) => setFeedbackType(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-base text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-zinc-700 transition-colors"
+              >
+                <option value="" className="py-2">Select type</option>
+                <option value="Bug" className="py-2">Bug Report</option>
+                <option value="Feature" className="py-2">Feature Request</option>
+                <option value="Improvement" className="py-2">Improvement Suggestion</option>
+                <option value="Other" className="py-2">Other Feedback</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-3.5 h-5 w-5 text-zinc-400 pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-zinc-300">
+              Description
+            </label>
+            <textarea
+              value={feedbackDescription}
+              onChange={(e) => setFeedbackDescription(e.target.value)}
+              placeholder="Tell us more..."
+              className="w-full min-h-[100px] bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-zinc-700 transition-colors resize-none"
+            />
+          </div>
+
+          <button
+            onClick={handleFeedbackSubmit}
+            disabled={isSubmittingFeedback}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 px-4 flex items-center justify-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmittingFeedback ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                <span>Submitting...</span>
+              </>
+            ) : (
+              <span>Submit Feedback</span>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (isLoading || !user) {
     return <div className="flex items-center justify-center h-screen bg-black"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white"></div></div>;
   }
@@ -731,102 +729,152 @@ export default function Home() {
     <div className="flex flex-col h-screen bg-black text-white relative">
       {/* Header */}
       <div className="flex justify-between items-center px-8 pt-6 pb-6">
-        <h1 className="text-4xl font-bold">My Notes</h1>
-        <div className="flex items-center gap-4">
-          <FeedbackButton userId={user.uid} />
+        <h1 className="text-4xl font-bold transition-all duration-300 hover:text-blue-400">My Notes</h1>
+        <div className="relative">
           <button 
-            className="bg-zinc-800 px-4 py-2 rounded-full text-zinc-300 hover:bg-zinc-700 transition-colors"
-            onClick={logout}
+            className="p-2 hover:bg-zinc-800 rounded-full transition-all duration-300 hover:scale-105"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            Logout
+            <Menu className="w-6 h-6 text-zinc-300" />
           </button>
+
+          {/* Dropdown Menu */}
+          {isMenuOpen && (
+            <>
+              {/* Backdrop */}
+              <div 
+                className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm transition-all duration-300"
+                onClick={() => setIsMenuOpen(false)}
+              />
+              
+              {/* Menu */}
+              <div className="absolute right-0 mt-2 w-48 bg-zinc-900 rounded-xl border border-zinc-800 shadow-lg overflow-hidden z-50 animate-in slide-in-from-top-2 duration-200">
+                <div className="py-1">
+                  <button
+                    className="w-full px-4 py-3 text-left text-zinc-300 hover:bg-zinc-800 transition-all duration-200 flex items-center gap-2 hover:text-white hover:translate-x-1"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setIsFeedbackOpen(true);
+                    }}
+                  >
+                    <MessageSquare className="w-5 h-5" />
+                    Feedback
+                  </button>
+                  <button
+                    className="w-full px-4 py-3 text-left text-zinc-300 hover:bg-zinc-800 transition-all duration-200 flex items-center gap-2 hover:text-white hover:translate-x-1"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      logout();
+                    }}
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                    Logout
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Search Bar */}
       <div className="px-8 mb-4">
-        <div className="bg-zinc-800 rounded-full flex items-center px-4 py-2">
+        <div className="bg-zinc-800 rounded-full flex items-center px-4 py-2 transition-all duration-300 hover:bg-zinc-700 focus-within:ring-2 focus-within:ring-blue-500">
           <Search className="w-5 h-5 text-zinc-400" />
           <input
             type="text"
             placeholder="Search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none pl-2 text-zinc-400 w-full"
+            className="bg-transparent border-none outline-none pl-2 text-zinc-400 w-full focus:text-white transition-colors duration-200"
           />
         </div>
       </div>
 
       {/* Action Buttons */}
-      <div className="px-4 sm:px-8 mb-6 flex flex-col sm:flex-row gap-2 sm:gap-4">
-        <NoteSelector
-          trigger={
-            <Button variant="default" size="default" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center">
-              <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-              <span className="text-sm sm:text-base">Chat with Note</span>
-            </Button>
-          }
-          notes={notes.map(({ uid, ...rest }) => rest)}
-          onNoteSelect={(note) => {
-            const fullNote = notes.find(n => n.id === note.id);
-            if (fullNote) {
-              setSelectedNoteForChat(fullNote);
-              setTimeout(() => { chatbotRef.current?.open(); }, 100);
-            }
-          }}
-          title="Select note to chat with"
-        />
-        <NoteSelector
-          trigger={
-            <Button variant="default" size="default" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white flex items-center justify-center">
-              <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-              <span className="text-sm sm:text-base">Convert to Template</span>
-            </Button>
-          }
-          notes={notes.filter(n => n.type !== 'lecture').map(({ uid, ...rest }) => rest)}
-          onNoteSelect={(note) => {
-            const fullNote = notes.find(n => n.id === note.id);
-            if (fullNote) {
-              setSelectedNoteForTemplate(fullNote);
-              setTimeout(() => { templateConverterRef.current?.open(); }, 100);
-            }
-          }}
-          title="Select note to convert"
-        />
-        <NoteSelector
-          trigger={
-            <Button variant="default" size="default" className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center">
-              <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-              <span className="text-sm sm:text-base">Flash Cards</span>
-            </Button>
-          }
-          notes={notes.filter(n => n.type === 'lecture').map(({ uid, ...rest }) => rest)}
-          onNoteSelect={(note) => {
-            const fullNote = notes.find(n => n.id === note.id);
-            if (fullNote) {
-              setSelectedNoteForFlashCards(fullNote);
-              setTimeout(() => { flashCardsRef.current?.open(); }, 100);
-            }
-          }}
-          title="Select lecture to view flash cards"
-        />
-        <NoteSelector
-          trigger={
-            <Button variant="default" size="default" className="w-full sm:w-auto bg-yellow-600 hover:bg-yellow-700 text-white flex items-center justify-center">
-              <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-              <span className="text-sm sm:text-base">Quiz</span>
-            </Button>
-          }
-          notes={notes.filter(n => n.type === 'lecture').map(({ uid, ...rest }) => rest)}
-          onNoteSelect={(note) => {
-            const fullNote = notes.find(n => n.id === note.id);
-            if (fullNote) {
-              setSelectedNoteForQuiz(fullNote);
-              setTimeout(() => { quizRef.current?.open(); }, 100);
-            }
-          }}
-          title="Select lecture to take quiz"
-        />
+      <div className="px-4 sm:px-8 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="w-full transition-transform duration-200 hover:scale-[1.02]">
+            <NoteSelector
+              trigger={
+                <Button variant="default" size="default" className="w-full h-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-all duration-300">
+                  <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                  <span className="text-sm sm:text-base">Chat with Note</span>
+                </Button>
+              }
+              notes={notes.map(({ uid, ...rest }) => rest)}
+              onNoteSelect={(note) => {
+                const fullNote = notes.find(n => n.id === note.id);
+                if (fullNote) {
+                  setSelectedNoteForChat(fullNote);
+                  setTimeout(() => { chatbotRef.current?.open(); }, 100);
+                }
+              }}
+              title="Select note to chat with"
+            />
+          </div>
+          <div className="w-full transition-transform duration-200 hover:scale-[1.02]">
+            <NoteSelector
+              trigger={
+                <Button variant="default" size="default" className="w-full h-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center transition-all duration-300">
+                  <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                  <span className="text-sm sm:text-base">Convert to Template</span>
+                </Button>
+              }
+              notes={notes.filter(n => n.type !== 'lecture').map(({ uid, ...rest }) => rest)}
+              onNoteSelect={(note) => {
+                const fullNote = notes.find(n => n.id === note.id);
+                if (fullNote) {
+                  setSelectedNoteForTemplate(fullNote);
+                  setTimeout(() => { templateConverterRef.current?.open(); }, 100);
+                }
+              }}
+              title="Select note to convert"
+            />
+          </div>
+          <div className="w-full transition-transform duration-200 hover:scale-[1.02]">
+            <NoteSelector
+              trigger={
+                <Button variant="default" size="default" className="w-full h-full bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center transition-all duration-300">
+                  <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                  <span className="text-sm sm:text-base">Flash Cards</span>
+                </Button>
+              }
+              notes={notes.filter(n => n.type === 'lecture').map(({ uid, ...rest }) => rest)}
+              onNoteSelect={(note) => {
+                const fullNote = notes.find(n => n.id === note.id);
+                if (fullNote) {
+                  setSelectedNoteForFlashCards(fullNote);
+                  setTimeout(() => { flashCardsRef.current?.open(); }, 100);
+                }
+              }}
+              title="Select lecture to view flash cards"
+            />
+          </div>
+          <div className="w-full transition-transform duration-200 hover:scale-[1.02]">
+            <NoteSelector
+              trigger={
+                <Button variant="default" size="default" className="w-full h-full bg-yellow-600 hover:bg-yellow-700 text-white flex items-center justify-center transition-all duration-300">
+                  <FileText className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                  <span className="text-sm sm:text-base">Quiz</span>
+                </Button>
+              }
+              notes={notes.filter(n => n.type === 'lecture').map(({ uid, ...rest }) => rest)}
+              onNoteSelect={(note) => {
+                const fullNote = notes.find(n => n.id === note.id);
+                if (fullNote) {
+                  setSelectedNoteForQuiz(fullNote);
+                  setTimeout(() => { quizRef.current?.open(); }, 100);
+                }
+              }}
+              title="Select lecture to take quiz"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Notes List Component */}
@@ -843,7 +891,7 @@ export default function Home() {
       {/* New Note Button */}
       <div className="flex justify-center py-6">
         <button
-          className="bg-blue-500 text-white rounded-full px-8 py-3 flex items-center justify-center hover:bg-blue-600 transition-colors"
+          className="bg-blue-500 text-white rounded-full px-8 py-3 flex items-center justify-center hover:bg-blue-600 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20"
           onClick={() => setShowModal(true)}
         >
           <Plus className="w-5 h-5 mr-2" />
@@ -902,6 +950,9 @@ export default function Home() {
           onClose={() => setToast(null)}
         />
       )}
+
+      {/* Replace the Sheet component with the modal */}
+      {isFeedbackOpen && renderFeedbackModal()}
     </div>
   );
 }

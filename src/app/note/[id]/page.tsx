@@ -10,9 +10,15 @@ import { useRouter } from "next/navigation";
 import { Chatbot, ChatbotRef } from "@/components/chatbot"
 import { TemplateConverter, TemplateConverterRef } from "@/components/template-converter"
 import { Button } from "@/components/ui/button";
-import { MessageSquare, FileText } from "lucide-react";
+import { MessageSquare, FileText, ArrowLeft, Download, ChevronDown } from "lucide-react";
 import { FlashCards, FlashCardsRef } from "@/components/flash-cards";
 import Quiz, { QuizRef } from "@/components/quiz";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Note {
   id: string;
@@ -75,8 +81,8 @@ export default function NotePage() {
         
         if (noteDoc.exists()) {
           const data = noteDoc.data();
-          console.log("Firestore data:", data);
-          console.log("Flash cards from doc:", data.flashCards);
+          //console.log("Firestore data:", data);
+          //console.log("Flash cards from doc:", data.flashCards);
           setNote({ 
             id: noteDoc.id, 
             ...data,
@@ -100,15 +106,67 @@ export default function NotePage() {
     );
   }
 
+  const handleExport = (type: string) => {
+    let content = '';
+    let filename = '';
+    
+    switch (type) {
+      case 'transcript':
+        content = note?.formattedTranscript || '';
+        filename = 'transcript.txt';
+        break;
+      case 'summary':
+        content = note?.summary || '';
+        filename = 'summary.txt';
+        break;
+      case 'action-items':
+        content = Array.isArray(note?.actionItems) 
+          ? note.actionItems.join('\n') 
+          : note?.actionItems || '';
+        filename = 'action-items.txt';
+        break;
+      case 'lecture-notes':
+        content = note?.lectureNotes || '';
+        filename = 'lecture-notes.txt';
+        break;
+      case 'key-topics':
+        content = note?.topicsCovered || '';
+        filename = 'key-topics.txt';
+        break;
+    }
+
+    // Create and trigger download
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-black text-white p-4 sm:p-6 md:p-8">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
+        {/* Header with Back Button */}
         <div className="mb-4 sm:mb-6 md:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-            {note.type === 'lecture' ? note.lectureTitle || note.meetingName : note.meetingName}
-          </h1>
-          <p className="text-sm sm:text-base text-zinc-400">
+          <div className="flex items-center gap-4 mb-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors flex-shrink-0"
+              onClick={() => router.back()}
+            >
+              <ArrowLeft className="h-5 w-5" />
+              <span className="sr-only">Back</span>
+            </Button>
+            <h1 className="text-xl sm:text-2xl font-semibold">
+              {note.type === 'lecture' ? note.lectureTitle || note.meetingName : note.meetingName}
+            </h1>
+          </div>
+          <p className="text-sm sm:text-base text-zinc-400 ml-12">
             {note.createdAt?.toDate ? note.createdAt.toDate().toLocaleDateString() : 'Date not available'} • {note.numberOfPeople} people
           </p>
         </div>
@@ -344,6 +402,47 @@ export default function NotePage() {
             )}
           </div>
         </Tabs>
+      </div>
+
+      {/* Fixed Export Button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="default"
+              size="default"
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg px-4 py-2 h-auto"
+            >
+              <Download className="h-5 w-5 mr-2" />
+              Export
+              <ChevronDown className="h-4 w-4 ml-2" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={() => handleExport('transcript')}>
+              Export transcript
+            </DropdownMenuItem>
+            {note.type === 'lecture' ? (
+              <>
+                <DropdownMenuItem onClick={() => handleExport('lecture-notes')}>
+                  Export lecture notes
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport('key-topics')}>
+                  Export key topics
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuItem onClick={() => handleExport('summary')}>
+                  Export summary
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport('action-items')}>
+                  Export action items
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Chatbot and Template Converter */}

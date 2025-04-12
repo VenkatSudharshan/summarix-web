@@ -156,15 +156,21 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
           </Button>
         </SheetTrigger>
       )}
-      <SheetContent side="right" className="w-full sm:w-[800px] p-0">
+      <SheetContent side="right" className="w-full sm:w-[800px] p-0 bg-zinc-900">
         <SheetHeader className="p-6 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-            <SheetClose asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleClose}>
-                <ArrowLeft className="h-5 w-5" />
-                <span className="sr-only">Close</span>
-              </Button>
-            </SheetClose>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="h-8 w-8 bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+              onClick={() => {
+                handleClose();
+                setIsOpen(false);
+              }}
+            >
+              <ArrowLeft className="h-5 w-5" />
+              <span className="sr-only">Back</span>
+            </Button>
             <SheetTitle>Convert to Template</SheetTitle>
           </div>
         </SheetHeader>
@@ -183,6 +189,9 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
                     <p className="text-sm text-zinc-400">{template.description}</p>
                   </button>
                 ))}
+              </div>
+              <div className="mt-6 text-sm text-zinc-400 text-center">
+                Need a custom template? Use <span className="text-blue-400">Chat with Note</span> for personalized template generation. Custom template builder coming soon!
               </div>
             </div>
           ) : (

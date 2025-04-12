@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { X, Check, ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
+import { X, Check, ChevronLeft, ChevronRight, RotateCw, ArrowLeft } from "lucide-react";
 
 interface QuizQuestion {
   question: string;
@@ -137,13 +137,21 @@ export const Quiz = forwardRef<QuizRef, QuizProps>(
         >
           <SheetHeader className="p-6 border-b border-zinc-800">
             <div className="flex items-center justify-between">
-              <SheetTitle className="text-white">Quiz</SheetTitle>
-              <SheetClose asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:text-zinc-300" onClick={handleClose}>
-                  <X className="h-5 w-5" />
-                  <span className="sr-only">Close</span>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="h-8 w-8 bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                  onClick={() => {
+                    handleClose();
+                    setIsOpen(false);
+                  }}
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                  <span className="sr-only">Back</span>
                 </Button>
-              </SheetClose>
+                <SheetTitle className="text-white">Quiz</SheetTitle>
+              </div>
             </div>
           </SheetHeader>
           
