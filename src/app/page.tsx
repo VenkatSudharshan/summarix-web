@@ -40,6 +40,11 @@ interface Note {
 // Define NoteWithoutUid type based on local Note
 type NoteWithoutUid = Omit<Note, 'uid'>;
 
+interface ToastState {
+  message: string;
+  type: 'success' | 'error';
+}
+
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
@@ -54,7 +59,7 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [context, setContext] = useState<string>('');
   const [selectedNoteForChat, setSelectedNoteForChat] = useState<Note | null>(null);
   const [selectedNoteForTemplate, setSelectedNoteForTemplate] = useState<Note | null>(null);
@@ -213,36 +218,111 @@ export default function Home() {
 
   // Recording functions (startRecording, stopRecording, formatTime)
   const startRecording = async () => {
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      // More accurate Safari detection
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || 
+                      /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('Audio recording is not supported in this browser. Please use Chrome or Firefox.', 'error');
+        return;
+      }
+
+      // Safari-specific audio constraints
+      const constraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          ...(isSafari ? {
+            sampleRate: 44100,
+            channelCount: 1,
+            sampleSize: 16
+          } : {})
+        }
+      };
+
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      // Reset everything
-      setRecordingTime(0);
-      chunksRef.current = [];
-      setAudioBlob(null);
+      // Initialize audio context for Safari
+      let mediaRecorder;
+      if (isSafari) {
+        try {
+          // Try to use standard MediaRecorder first
+          if (window.MediaRecorder) {
+            mediaRecorder = new MediaRecorder(stream);
+          } else {
+            // Fallback to AudioContext if MediaRecorder is not available
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            const destination = audioContext.createMediaStreamDestination();
+            source.connect(destination);
+            
+            // Try to use webkitMediaRecorder if available
+            if ((window as any).webkitMediaRecorder) {
+              mediaRecorder = new (window as any).webkitMediaRecorder(destination.stream);
+            } else {
+              showToast('Recording is not supported in this browser. Please use Chrome or Firefox.', 'error');
+              stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Error initializing MediaRecorder:', error);
+          showToast('Error initializing audio recording. Please try again.', 'error');
+          stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+          return;
+        }
+      } else {
+        // For other browsers, use standard MediaRecorder
+        mediaRecorder = new MediaRecorder(stream);
+      }
+
+      const audioChunks: BlobPart[] = [];
       
-      // Set up recorder
-      mediaRecorder.ondataavailable = (event) => {
+      mediaRecorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
+          audioChunks.push(event.data);
         }
       };
 
       mediaRecorder.onstop = () => {
-        // Create blob from all chunks
-        const blob = new Blob(chunksRef.current, { type: 'audio/wav' });
-        setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
+        // For Safari, we'll always convert to WAV format
+        const mimeType = isSafari ? 'audio/wav' : 'audio/webm;codecs=opus';
+        const audioBlob = new Blob(audioChunks, { type: mimeType });
+        setAudioBlob(audioBlob);
+        stream?.getTracks().forEach((track: MediaStreamTrack) => track.stop());
       };
 
-      // Start recording
-      mediaRecorder.start();
+      // Request data more frequently on Safari
+      mediaRecorder.start(isSafari ? 100 : 1000);
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
+      
+      // Start timer
+      const startTime = Date.now();
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 1000);
+
     } catch (error) {
-      console.error('Error starting recording:', error);
-      setToast({ message: 'Error starting recording', type: 'error' });
+      console.error('Error accessing media devices:', error);
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          showToast('Please allow microphone access to record audio.', 'error');
+        } else if (error.name === 'NotFoundError') {
+          showToast('No microphone found. Please connect a microphone and try again.', 'error');
+        } else if (error.name === 'NotSupportedError' || error.name === 'NotReadableError') {
+          showToast('Recording is not supported or microphone is busy. Please try again.', 'error');
+        } else {
+          showToast('Failed to access microphone. Please try again.', 'error');
+        }
+      }
+      // Ensure we clean up any streams if there's an error
+      if (stream) {
+        stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+      }
     }
   };
 
@@ -263,10 +343,16 @@ export default function Home() {
   // File handling functions (handleFileSelect, handleUploadFile)
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type.startsWith('audio/')) {
-      setSelectedFile(file);
-    } else {
-      alert('Please select an audio file');
+    if (file) {
+      // Check if the file is an audio file
+      const isAudioFile = file.type.startsWith('audio/') || 
+        file.name.match(/\.(mp3|wav|m4a|aac|mp4|ogg)$/i);
+      
+      if (isAudioFile) {
+        setSelectedFile(file);
+      } else {
+        showToast('Please select an audio file (MP3, WAV, M4A, AAC, MP4, or OGG)', 'error');
+      }
     }
   };
 
@@ -286,7 +372,7 @@ export default function Home() {
       } else if (audioBlob) {
         // Ensure we have a valid audio blob
         if (!audioBlob || audioBlob.size === 0) {
-          setToast({ message: 'No audio recorded', type: 'error' });
+          showToast('No audio recorded', 'error');
           setIsUploading(false);
           return;
         }
@@ -295,7 +381,7 @@ export default function Home() {
       }
 
       if (!fileToUpload) {
-        setToast({ message: 'No file selected for upload', type: 'error' });
+        showToast('No file selected for upload', 'error');
         setIsUploading(false);
         return;
       }
@@ -310,7 +396,7 @@ export default function Home() {
         console.log('File uploaded successfully:', fileUrl);
       } catch (error) {
         console.error('Error uploading file:', error);
-        setToast({ message: 'Error uploading file', type: 'error' });
+        showToast('Error uploading file', 'error');
         setIsUploading(false);
         return;
       }
@@ -348,7 +434,7 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Error creating Firestore document:', error);
-        setToast({ message: 'Error saving file information', type: 'error' });
+        showToast('Error saving file information', 'error');
         setIsUploading(false);
         return;
       }
@@ -361,10 +447,10 @@ export default function Home() {
       setContentType(null);
       setShowModal(false);
       setShowRecordingModal(false);
-      setToast({ message: 'File uploaded successfully', type: 'success' });
+      showToast('File uploaded successfully', 'success');
     } catch (error) {
       console.error('Error in handleUploadFile:', error);
-      setToast({ message: 'An error occurred', type: 'error' });
+      showToast('An error occurred', 'error');
     } finally {
       setIsUploading(false);
     }
@@ -395,7 +481,7 @@ export default function Home() {
             type="file"
             ref={fileInputRef}
             onChange={handleFileSelect}
-            accept="audio/*"
+            accept="audio/*,.mp3,.wav,.m4a,.aac,.mp4,.ogg"
             className="hidden"
             disabled={isUploading}
           />
@@ -604,6 +690,38 @@ export default function Home() {
       </div>
     </div>
   );
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for browsers that don't support clipboard API
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+        } catch (err) {
+          console.error('Failed to copy text: ', err);
+        }
+        document.body.removeChild(textArea);
+      }
+      showToast('Copied to clipboard!', 'success');
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+      showToast('Failed to copy to clipboard', 'error');
+    }
+  };
 
   if (isLoading || !user) {
     return <div className="flex items-center justify-center h-screen bg-black"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white"></div></div>;
