@@ -726,7 +726,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white relative">
+    <div className="flex flex-col h-screen bg-black text-white relative overscroll-none">
       {/* Header */}
       <div className="flex justify-between items-center px-8 pt-6 pb-6">
         <h1 className="text-4xl font-bold transition-all duration-300 hover:text-blue-400">Summarix</h1>
@@ -883,7 +883,7 @@ export default function Home() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto pb-24">
+        <div className="flex-1 overflow-y-auto pb-24 overscroll-none bg-black">
           <NotesList userId={user.uid} notes={filteredNotes} />
         </div>
       )}
