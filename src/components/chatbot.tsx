@@ -116,8 +116,8 @@ export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClo
           </div>
         </SheetHeader>
         <div className="flex flex-col h-[calc(100vh-5rem)]">
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-4">
+          <div className="flex-1 overflow-y-auto p-6 pb-[15vh]">
+            <div className="space-y-4 mb-4">
               {messages.map((message, i) => (
                 <div
                   key={i}
@@ -139,7 +139,7 @@ export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClo
               <div ref={messagesEndRef} />
             </div>
           </div>
-          <div className="p-4 border-t border-zinc-800">
+          <div className="p-4 border-t border-zinc-800 fixed bottom-0 left-0 right-0 bg-zinc-900">
             <form onSubmit={handleSubmit} className="flex gap-2">
               <input
                 type="text"

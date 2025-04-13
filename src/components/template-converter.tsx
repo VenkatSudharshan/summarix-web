@@ -215,13 +215,13 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
                     <textarea
                       value={editedContent}
                       onChange={(e) => setEditedContent(e.target.value)}
-                      className="w-full h-full min-h-[calc(100vh-15rem)] bg-zinc-900 text-zinc-200 p-4 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none"
+                      className="w-full h-full min-h-[calc(100vh-15rem)] bg-zinc-900 text-zinc-200 p-4 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none pb-[6vh]"
                       placeholder="Edit your template content here..."
                     />
                   </div>
                 ) : null}
               </div>
-              <div className="p-6 border-t border-zinc-800 space-y-2">
+              <div className="p-6 border-t border-zinc-800 space-y-2 fixed bottom-[1vh] left-0 right-0 bg-zinc-900">
                 {convertedContent && (
                   <div className="flex gap-2 mb-2">
                     <Button 
@@ -244,13 +244,13 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
                     </Button>
                   </div>
                 )}
-                <Button 
+                {/*<Button 
                   variant="outline" 
                   className="w-full"
                   onClick={resetConverter}
                 >
                   Choose Another Template
-                </Button>
+                </Button>*/}
               </div>
             </div>
           )}

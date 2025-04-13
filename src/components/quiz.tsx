@@ -162,7 +162,7 @@ export const Quiz = forwardRef<QuizRef, QuizProps>(
               </div>
             ) : questions.length > 0 ? (
               <>
-                <div className="flex-1 flex flex-col p-6">
+                <div className="flex-1 flex flex-col p-6 pb-[12vh]">
                   <div className="mb-6">
                     <div className="text-sm text-blue-400 mb-2">Question {currentIndex + 1} of {questions.length}</div>
                     <div className="text-2xl font-medium text-white">{questions[currentIndex].question}</div>
@@ -200,7 +200,7 @@ export const Quiz = forwardRef<QuizRef, QuizProps>(
                   </div>
                 </div>
                 
-                <div className="p-6 pb-12 border-t border-zinc-800">
+                <div className="p-6 fixed bottom-[3vh] left-0 right-0 border-t border-zinc-800 bg-zinc-900">
                   <div className="flex justify-between items-center">
                     <Button 
                       variant="outline" 
