@@ -77,14 +77,14 @@ export default function NotesList({ userId, notes, onDeleteNote }: NotesListProp
 
   if (notes.length === 0) {
     return (
-      <div className="flex justify-center items-center h-full">
+      <div className="flex justify-center items-center h-full bg-black">
         <p className="text-zinc-500">No notes found</p>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 h-full bg-black overscroll-none">
       {notes.map((note) => (
         <div 
           key={note.id}
