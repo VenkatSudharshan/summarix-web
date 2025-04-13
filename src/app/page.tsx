@@ -883,13 +883,13 @@ export default function Home() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pb-24">
           <NotesList userId={user.uid} notes={filteredNotes} />
         </div>
       )}
 
       {/* New Note Button */}
-      <div className="flex justify-center py-6">
+      <div className="fixed bottom-6 left-0 right-0 flex justify-center z-10">
         <button
           className="bg-blue-500 text-white rounded-full px-8 py-3 flex items-center justify-center hover:bg-blue-600 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20"
           onClick={() => setShowModal(true)}
