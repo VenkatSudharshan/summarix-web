@@ -4,10 +4,6 @@ const nextConfig = {
   images: {
     domains: ['lh3.googleusercontent.com'],
   },
-  // Disable ESLint during build
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   // Ensure PWA assets are properly cached
   async headers() {
     return [
