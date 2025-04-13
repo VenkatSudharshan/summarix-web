@@ -156,7 +156,7 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
           </Button>
         </SheetTrigger>
       )}
-      <SheetContent side="right" className="w-full sm:w-[800px] p-0 bg-zinc-900">
+      <SheetContent side="right" className="w-full sm:w-[800px] p-0 bg-zinc-900 flex flex-col">
         <SheetHeader className="p-6 border-b border-zinc-800">
           <div className="flex items-center gap-2">
             <Button 
@@ -174,9 +174,9 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
             <SheetTitle>Convert to Template</SheetTitle>
           </div>
         </SheetHeader>
-        <div className="flex flex-col h-[calc(100vh-5rem)]">
+        <div className="flex-1 flex flex-col min-h-0 relative">
           {!selectedTemplate ? (
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto">
               <p className="text-zinc-300">Choose a template to convert to:</p>
               <div className="space-y-2">
                 {templates.map((template) => (
@@ -195,7 +195,7 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
               </div>
             </div>
           ) : (
-            <div className="flex flex-col h-full">
+            <>
               <div className="px-6 py-4 border-b border-zinc-800">
                 <h3 className="font-medium text-zinc-200">
                   {templates.find(t => t.id === selectedTemplate)?.name}
@@ -204,7 +204,7 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
                   {templates.find(t => t.id === selectedTemplate)?.description}
                 </p>
               </div>
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto p-6 pb-24">
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-4" />
@@ -215,15 +215,15 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
                     <textarea
                       value={editedContent}
                       onChange={(e) => setEditedContent(e.target.value)}
-                      className="w-full h-full min-h-[calc(100vh-15rem)] bg-zinc-900 text-zinc-200 p-4 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none pb-[6vh]"
+                      className="w-full h-full min-h-[calc(100vh-15rem)] bg-zinc-900 text-zinc-200 p-4 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none"
                       placeholder="Edit your template content here..."
                     />
                   </div>
                 ) : null}
               </div>
-              <div className="p-6 border-t border-zinc-800 space-y-2 fixed bottom-[1vh] left-0 right-0 bg-zinc-900">
-                {convertedContent && (
-                  <div className="flex gap-2 mb-2">
+              {convertedContent && (
+                <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-zinc-800 bg-zinc-900">
+                  <div className="flex gap-2 max-w-[800px] mx-auto">
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -243,16 +243,9 @@ export const TemplateConverter = forwardRef<TemplateConverterRef, TemplateConver
                       Download
                     </Button>
                   </div>
-                )}
-                {/*<Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={resetConverter}
-                >
-                  Choose Another Template
-                </Button>*/}
-              </div>
-            </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </SheetContent>

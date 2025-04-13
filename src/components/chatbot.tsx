@@ -100,7 +100,7 @@ export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClo
           </Button>
         </SheetTrigger>
       )}
-      <SheetContent side="right" className="w-full sm:w-[800px] p-0 bg-zinc-900">
+      <SheetContent side="right" className="w-full sm:w-[800px] p-0 bg-zinc-900 flex flex-col">
         <SheetHeader className="p-6 border-b border-zinc-800">
           <div className="flex items-center gap-2">
             <Button 
@@ -115,9 +115,9 @@ export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClo
             <SheetTitle>Chat with Transcript</SheetTitle>
           </div>
         </SheetHeader>
-        <div className="flex flex-col h-[calc(100vh-5rem)]">
-          <div className="flex-1 overflow-y-auto p-6 pb-[15vh]">
-            <div className="space-y-4 mb-4">
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto p-6 pb-[12vh]">
+            <div className="space-y-4">
               {messages.map((message, i) => (
                 <div
                   key={i}
@@ -139,7 +139,7 @@ export const Chatbot = forwardRef<ChatbotRef, ChatbotProps>(({ transcript, onClo
               <div ref={messagesEndRef} />
             </div>
           </div>
-          <div className="p-4 border-t border-zinc-800 fixed bottom-0 left-0 right-0 bg-zinc-900">
+          <div className="p-4 border-t border-zinc-800 bg-zinc-900">
             <form onSubmit={handleSubmit} className="flex gap-2">
               <input
                 type="text"
