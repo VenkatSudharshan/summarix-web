@@ -35,7 +35,7 @@ interface Note {
 export default function NotesApp() {
   const [showModal, setShowModal] = useState(false)
   const [showRecordingModal, setShowRecordingModal] = useState(false)
-  const [selectedNote, setSelectedNote] = useState<number | null>(null)
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const { user, logout } = useAuth()
@@ -454,7 +454,7 @@ export default function NotesApp() {
       </div>
 
       {/* Notes List */}
-      <div className="flex-1 overflow-auto px-4">
+      <div className="flex-1 overflow-auto px-4 pb-28">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
@@ -471,11 +471,11 @@ export default function NotesApp() {
             </p>
           </div>
         ) : (
-          notes.map((note, index) => (
+          notes.map((note) => (
             <div
               key={note.id}
               className="border-b border-zinc-800 py-4 px-4 cursor-pointer"
-              onClick={() => setSelectedNote(index)}
+              onClick={() => setSelectedNote(note)}
             >
               <div className="flex items-start">
                 <div className="bg-zinc-800 rounded-full w-12 h-12 flex items-center justify-center mr-3">
@@ -504,26 +504,25 @@ export default function NotesApp() {
         )}
       </div>
 
-      {/* New Note Button */}
-      <div className="flex justify-center py-6">
+      {/* New Note Button - Fixed bottom right */}
+      <div className="fixed bottom-24 right-6 flex flex-col items-center">
         <button
-          className="bg-blue-500 text-white rounded-full px-8 py-3 flex items-center justify-center hover:bg-blue-600 transition-colors"
+          className="bg-blue-500 text-white rounded-full w-14 h-14 flex items-center justify-center hover:bg-blue-600 transition-colors shadow-lg"
           onClick={() => setShowModal(true)}
         >
-          <Plus className="w-5 h-5 mr-2" />
-          <span className="text-lg font-medium">New Note</span>
+          <Plus className="w-7 h-7" />
         </button>
       </div>
 
-      {/* Home Indicator */}
-      <div className="flex justify-center py-2">
+      {/* Home Indicator with extra padding */}
+      <div className="flex justify-center py-2 pb-8">
         <div className="w-32 h-1 bg-zinc-600 rounded-full"></div>
       </div>
     </div>
   )
 
   const renderNoteDetail = () => {
-    const note = notes[selectedNote!]
+    const note = selectedNote!
 
     return (
       <div className="flex flex-col h-screen bg-black text-white">
