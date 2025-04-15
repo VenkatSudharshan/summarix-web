@@ -56,68 +56,6 @@ export default function NotesApp() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Add compression utility functions
-  const compressAudio = async (audioBlob: Blob): Promise<Blob> => {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const arrayBuffer = await audioBlob.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    
-    const offlineContext = new OfflineAudioContext(
-      audioBuffer.numberOfChannels,
-      audioBuffer.length,
-      audioBuffer.sampleRate * 0.5
-    );
-    
-    const source = offlineContext.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(offlineContext.destination);
-    source.start();
-    
-    const renderedBuffer = await offlineContext.startRendering();
-    
-    return new Promise<Blob>((resolve) => {
-      const length = renderedBuffer.length;
-      const channels = renderedBuffer.numberOfChannels;
-      const sampleRate = renderedBuffer.sampleRate;
-      
-      const audioData = new Float32Array(length * channels);
-      for (let channel = 0; channel < channels; channel++) {
-        const channelData = renderedBuffer.getChannelData(channel);
-        for (let i = 0; i < length; i++) {
-          audioData[i * channels + channel] = channelData[i];
-        }
-      }
-      
-      const dataView = new DataView(new ArrayBuffer(44 + audioData.length * 2));
-      
-      writeString(dataView, 0, 'RIFF');
-      dataView.setUint32(4, 36 + audioData.length * 2, true);
-      writeString(dataView, 8, 'WAVE');
-      writeString(dataView, 12, 'fmt ');
-      dataView.setUint32(16, 16, true);
-      dataView.setUint16(20, 1, true);
-      dataView.setUint16(22, channels, true);
-      dataView.setUint32(24, sampleRate, true);
-      dataView.setUint32(28, sampleRate * channels * 2, true);
-      dataView.setUint16(32, channels * 2, true);
-      dataView.setUint16(34, 16, true);
-      writeString(dataView, 36, 'data');
-      dataView.setUint32(40, audioData.length * 2, true);
-      
-      for (let i = 0; i < audioData.length; i++) {
-        dataView.setInt16(44 + i * 2, audioData[i] * 0x7FFF, true);
-      }
-      
-      resolve(new Blob([dataView], { type: 'audio/wav' }));
-    });
-  };
-
-  const writeString = (dataView: DataView, offset: number, string: string) => {
-    for (let i = 0; i < string.length; i++) {
-      dataView.setUint8(offset + i, string.charCodeAt(i));
-    }
-  };
-
   // Format time function
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -146,10 +84,9 @@ export default function NotesApp() {
         }
       }
 
-      recorder.onstop = async () => {
+      recorder.onstop = () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/wav' })
-        const compressedBlob = await compressAudio(audioBlob)
-        const audioFile = new File([compressedBlob], 'recorded-audio.wav', { type: 'audio/wav' })
+        const audioFile = new File([audioBlob], 'recorded-audio.wav', { type: 'audio/wav' })
         setRecordedFile(audioFile)
         setAudioBlob(audioFile)
         stream.getTracks().forEach(track => track.stop())
