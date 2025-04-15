@@ -56,6 +56,40 @@ export default function NotesApp() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Service worker registration
+  useEffect(() => {
+    if ('serviceWorker' in navigator && 'SyncManager' in window) {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(registration => {
+          console.log('Service Worker registered');
+        })
+        .catch(error => {
+          console.error('Service Worker registration failed:', error);
+        });
+    }
+  }, []);
+
+  // Wake lock management
+  const [wakeLock, setWakeLock] = useState<any>(null);
+
+  const requestWakeLock = async () => {
+    if ('wakeLock' in navigator) {
+      try {
+        const lock = await (navigator as any).wakeLock.request('screen');
+        setWakeLock(lock);
+      } catch (err) {
+        console.warn('Wake Lock API not supported:', err);
+      }
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLock) {
+      wakeLock.release();
+      setWakeLock(null);
+    }
+  };
+
   // Format time function
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -66,52 +100,88 @@ export default function NotesApp() {
   // Start recording function
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-      setMediaRecorder(recorder)
-      setAudioChunks([])
+      await requestWakeLock();
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm',
+        audioBitsPerSecond: 128000
+      });
+      
+      setMediaRecorder(recorder);
+      setAudioChunks([]);
 
       // Start timer
-      let seconds = 0
+      let seconds = 0;
       timerIntervalRef.current = setInterval(() => {
-        seconds++
-        setRecordingTime(seconds)
-      }, 1000)
+        seconds++;
+        setRecordingTime(seconds);
+      }, 1000);
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          setAudioChunks(chunks => [...chunks, event.data])
+          setAudioChunks(chunks => {
+            const newChunks = [...chunks, event.data];
+            
+            // Update service worker with current state
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({
+                type: 'RECORDING_STATE',
+                isRecording: true,
+                audioChunks: newChunks
+              });
+            }
+            
+            return newChunks;
+          });
         }
-      }
+      };
 
       recorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' })
-        const audioFile = new File([audioBlob], 'recorded-audio.wav', { type: 'audio/wav' })
-        setRecordedFile(audioFile)
-        setAudioBlob(audioFile)
-        stream.getTracks().forEach(track => track.stop())
-      }
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+        }
+        
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], 'recorded-audio.webm', { type: 'audio/webm' });
+        setRecordedFile(audioFile);
+        setAudioBlob(audioFile);
+        
+        releaseWakeLock();
+        stream.getTracks().forEach(track => track.stop());
+      };
 
-      recorder.start()
-      setIsRecording(true)
+      // Start recording with 1-second timeslice for more frequent data collection
+      recorder.start(1000);
+      setIsRecording(true);
     } catch (error) {
-      console.error('Error starting recording:', error)
+      console.error('Error starting recording:', error);
+      setIsRecording(false);
+      releaseWakeLock();
     }
-  }
+  };
 
   // Stop recording function
   const stopRecording = () => {
     if (mediaRecorder && isRecording) {
-      mediaRecorder.stop()
-      setIsRecording(false)
-      
-      // Stop timer
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-        timerIntervalRef.current = null
+      try {
+        mediaRecorder.stop();
+        setIsRecording(false);
+        
+        // Notify service worker that recording has stopped
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'RECORDING_STATE',
+            isRecording: false,
+            audioChunks: []
+          });
+        }
+      } catch (error) {
+        console.error('Error stopping recording:', error);
       }
     }
-  }
+  };
 
   // Clear recording function
   const clearRecording = useCallback(() => {
@@ -175,14 +245,17 @@ export default function NotesApp() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (wakeLock) {
+        releaseWakeLock();
+      }
       if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
+        clearInterval(timerIntervalRef.current);
       }
       if (mediaRecorder && isRecording) {
         mediaRecorder.stop()
       }
     }
-  }, [isRecording, mediaRecorder])
+  }, [wakeLock, isRecording, mediaRecorder])
 
   // Fetch notes from Firestore
   useEffect(() => {
