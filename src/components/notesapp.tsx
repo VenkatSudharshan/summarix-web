@@ -100,11 +100,11 @@ export default function NotesApp() {
   // Start recording function
   const startRecording = async () => {
     try {
-      await requestWakeLock();
-      
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Create MediaRecorder with specific options for better PWA compatibility
       const recorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm',
+        mimeType: 'audio/webm;codecs=opus',
         audioBitsPerSecond: 128000
       });
       
@@ -118,22 +118,13 @@ export default function NotesApp() {
         setRecordingTime(seconds);
       }, 1000);
 
+      // Store chunks in a more reliable way
+      const chunks: Blob[] = [];
+      
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          setAudioChunks(chunks => {
-            const newChunks = [...chunks, event.data];
-            
-            // Update service worker with current state
-            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage({
-                type: 'RECORDING_STATE',
-                isRecording: true,
-                audioChunks: newChunks
-              });
-            }
-            
-            return newChunks;
-          });
+          chunks.push(event.data);
+          setAudioChunks(chunks);
         }
       };
 
@@ -143,22 +134,23 @@ export default function NotesApp() {
           timerIntervalRef.current = null;
         }
         
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const audioFile = new File([audioBlob], 'recorded-audio.webm', { type: 'audio/webm' });
+        // Create the final blob from all chunks
+        const audioBlob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
+        const audioFile = new File([audioBlob], 'recorded-audio.webm', { type: 'audio/webm;codecs=opus' });
+        
         setRecordedFile(audioFile);
         setAudioBlob(audioFile);
         
-        releaseWakeLock();
+        // Clean up
         stream.getTracks().forEach(track => track.stop());
       };
 
-      // Start recording with 1-second timeslice for more frequent data collection
-      recorder.start(1000);
+      // Start recording with smaller timeslice for more frequent data collection
+      recorder.start(500); // Collect data every 500ms
       setIsRecording(true);
     } catch (error) {
       console.error('Error starting recording:', error);
       setIsRecording(false);
-      releaseWakeLock();
     }
   };
 
@@ -168,15 +160,6 @@ export default function NotesApp() {
       try {
         mediaRecorder.stop();
         setIsRecording(false);
-        
-        // Notify service worker that recording has stopped
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
-            type: 'RECORDING_STATE',
-            isRecording: false,
-            audioChunks: []
-          });
-        }
       } catch (error) {
         console.error('Error stopping recording:', error);
       }
