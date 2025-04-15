@@ -26,7 +26,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Message event handler for background recording
+// Message Event handler for background recording
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'RECORDING_STATE') {
     // Handle recording state changes
