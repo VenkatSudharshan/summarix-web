@@ -904,7 +904,7 @@ export default function Home() {
         <div className="w-32 h-1 bg-zinc-600 rounded-full"></div>
       </div>
 
-      {/* Conditionally Rendered Components */} 
+      {/* Conditionally Rendered Components into the page */} 
       {selectedNoteForChat && (
         <Chatbot
           ref={chatbotRef}
